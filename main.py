@@ -13,12 +13,12 @@ from pathlib import Path
 from time import sleep
 import logging
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot
-from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QImage, QPixmap
+from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QImage, QPixmap, QBrush, QCursor
 from PyQt5.QtWidgets import (QAbstractItemView, QDesktopWidget, QGridLayout,
                              QGroupBox, QHBoxLayout, QHeaderView, QLabel,
                              QPushButton, QSlider, QStyle, QTableWidget,
                              QTableWidgetItem, QVBoxLayout, QWidget, 
-                             QMessageBox, QWidget, QApplication, QFileDialog)
+                             QMessageBox, QWidget, QApplication, QFileDialog, QFrame)
 
 """some utility function"""
 import logging
@@ -99,6 +99,7 @@ class VideoFrameViewer(QLabel):
         self.is_selecting = False
         self.pt1 = self.pt2 = None
         self.select_pt1 = self.select_pt2 = None
+        self.setCursor(Qt.CrossCursor)
 
         # case: draw config
         self.draw_color = QColor(0, 0, 0)
@@ -194,8 +195,8 @@ class VideoAppViewer(QWidget):
         label_path = self._get_header_label('Path')
         label_shape = self._get_header_label('Shape')
         label_fps = self._get_header_label('FPS')
-        label_objid = self._get_header_label('Object ID')
-        label_objcls = self._get_header_label('Object Class')
+        label_objid = self._get_header_label('Object ID (F to increase, D to decrease)')
+        label_objcls = self._get_header_label('Object Class (C to switch)')
         label_bbox = self._get_header_label('Boxes')
         
         
@@ -554,6 +555,91 @@ class VideoApp(VideoAppViewer):
         else:
             self.btn_play_video.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
 
+    # @pyqtSlot()
+    # def event_frame_mouse_press(self, event):
+    #     """label frame press mouse event
+    #     - Qt.LeftButton: drawing
+    #     - Qt.RightButton: select to delete
+    #     Arguments:
+    #         event {PyQt5.QtGui.QMouseEvent} -- event object
+    #     """
+    #     if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
+    #         if event.button() == Qt.LeftButton:
+    #             nrecords = self._get_nrecord_in_current_frame()
+    #             if self.limit_nlabel is not None and nrecords and int(self.limit_nlabel) <= nrecords:
+
+    #                 self.logger.warning('not available to add a new record (exist=%d, limit=%d)', \
+    #                                     nrecords, self.limit_nlabel)
+    #             else:
+    #                 self.label_frame.is_drawing = True
+    #                 self.label_frame.is_selecting = False
+    #                 self.logger.debug('press mouse at (%d, %d)', event.x(), event.y())
+    #                 self.label_frame.pt1 = (event.x(), event.y())
+    #         elif event.button() == Qt.RightButton:
+    #             closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
+    #             if closest_record:
+    #                 pt1 = (closest_record['x1'], closest_record['y1'])
+    #                 pt2 = (closest_record['x2'], closest_record['y2'])
+    #                 message = '<b>Do you want to delete the record ?</b><br/><br/> \
+    #                 frame index -\t{} <br/> position -\t{} {}'.format(
+    #                     closest_record['frame_idx'], str(pt1), str(pt2))
+    #                 reply = QMessageBox.question(self, 'Delete Record', message, \
+    #                                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+    #                 if reply == QMessageBox.Yes:
+    #                     self._remove_record(closest_record['frame_idx'], pt1, pt2)
+    #                     self.is_force_update = True
+    #                     self.update()
+
+    # @pyqtSlot()
+    # def event_frame_mouse_move(self, event):
+    #     if self.label_frame.is_drawing and self._check_coor_in_frame(event.x(), event.y()):
+    #         self.logger.debug('move mouse at (%d, %d)', event.x(), event.y())
+    #         self.label_frame.pt2 = (event.x(), event.y())
+    #         self.update()
+    #     elif not self.label_frame.is_drawing and not self.is_playing_video:
+    #         closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
+    #         if closest_record:
+    #             self.label_frame.is_selecting = True
+    #             self.label_frame.select_pt1 = (closest_record['x1'], closest_record['y1'])
+    #             self.label_frame.select_pt2 = (closest_record['x2'], closest_record['y2'])
+    #         else:
+    #             self.label_frame.is_selecting = False
+    #             self.label_frame.select_pt1 = self.label_frame.select_pt2 = None
+    #         self.update()
+
+    # @pyqtSlot()
+    # def event_frame_mouse_release(self, event):
+    #     if self.label_frame.is_drawing:
+    #         self.label_frame.is_drawing = False
+    #         self.logger.debug('release mouse at (%d, %d)', event.x(), event.y())
+    #         if self._check_coor_in_frame(event.x(), event.y()):
+    #             self.label_frame.pt2 = (event.x(), event.y())
+    #         pt1, pt2 = self.label_frame.revise_coor(self.label_frame.pt1, self.label_frame.pt2)
+    #         record = OrderedDict([
+    #             ('timestamp_hms', self._frame_idx_to_hms(self.render_frame_idx)),
+    #             ('timestamp_hmsf', self._frame_idx_to_hmsf(self.render_frame_idx)),
+    #             ('frame_idx', self.render_frame_idx), ('fps', self.video_fps),
+    #             ('object_cls', self.classes_list[self.current_class_index]), ('object_cls', self.classes_list[self.current_class_index]),
+    #             ('object_idx', self.object_id), ('object_id', self.object_id),
+    #             ('frame_height', self.frame_height), ('frame_width', self.frame_width),
+    #             ('scale_height', self.scale_height), ('scale_width', self.scale_width),
+    #             ('x1', pt1[0]), ('y1', pt1[1]), ('x2', pt2[0]), ('y2', pt2[1]),
+    #             ('center_x', (pt1[0]+pt2[0])//2), ('center_y', (pt1[1]+pt2[1])//2)
+    #         ])
+    #         self.records.append(record)
+    #         self.records = sorted(self.records, key=lambda x: x['frame_idx'])
+    #         self.add_record_to_preview(record['timestamp_hms'], \
+    #                                    record['frame_idx'], \
+    #                                     record['object_cls'], \
+    #                                     record['object_id'], \
+    #                                    (record['x1'], record['y1']), \
+    #                                    (record['x2'], record['y2']))
+    #         self.label_frame.pt1 = self.label_frame.pt2 = None
+    #         self.is_force_update = True
+    #         self.update()
+    
+    
+    # Frame event
     @pyqtSlot()
     def event_frame_mouse_press(self, event):
         """label frame press mouse event
@@ -564,16 +650,7 @@ class VideoApp(VideoAppViewer):
         """
         if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
             if event.button() == Qt.LeftButton:
-                nrecords = self._get_nrecord_in_current_frame()
-                if self.limit_nlabel is not None and nrecords and int(self.limit_nlabel) <= nrecords:
-
-                    self.logger.warning('not available to add a new record (exist=%d, limit=%d)', \
-                                        nrecords, self.limit_nlabel)
-                else:
-                    self.label_frame.is_drawing = True
-                    self.label_frame.is_selecting = False
-                    self.logger.debug('press mouse at (%d, %d)', event.x(), event.y())
-                    self.label_frame.pt1 = (event.x(), event.y())
+                self.label_frame.pt1 = (event.x(), event.y())  # Lưu điểm bắt đầu khi nhấn chuột
             elif event.button() == Qt.RightButton:
                 closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
                 if closest_record:
@@ -591,29 +668,20 @@ class VideoApp(VideoAppViewer):
 
     @pyqtSlot()
     def event_frame_mouse_move(self, event):
-        if self.label_frame.is_drawing and self._check_coor_in_frame(event.x(), event.y()):
-            self.logger.debug('move mouse at (%d, %d)', event.x(), event.y())
-            self.label_frame.pt2 = (event.x(), event.y())
-            self.update()
-        elif not self.label_frame.is_drawing and not self.is_playing_video:
-            closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
-            if closest_record:
-                self.label_frame.is_selecting = True
-                self.label_frame.select_pt1 = (closest_record['x1'], closest_record['y1'])
-                self.label_frame.select_pt2 = (closest_record['x2'], closest_record['y2'])
-            else:
-                self.label_frame.is_selecting = False
-                self.label_frame.select_pt1 = self.label_frame.select_pt2 = None
-            self.update()
+        if self.label_frame.pt1:  # Nếu đã có điểm bắt đầu, tức là đang trong quá trình vẽ box
+            self.label_frame.pt2 = (event.x(), event.y())  # Lưu điểm thứ hai khi di chuyển chuột
+            self.update()  # Cập nhật giao diện để hiển thị box tạm thời
 
     @pyqtSlot()
     def event_frame_mouse_release(self, event):
-        if self.label_frame.is_drawing:
-            self.label_frame.is_drawing = False
-            self.logger.debug('release mouse at (%d, %d)', event.x(), event.y())
-            if self._check_coor_in_frame(event.x(), event.y()):
-                self.label_frame.pt2 = (event.x(), event.y())
-            pt1, pt2 = self.label_frame.revise_coor(self.label_frame.pt1, self.label_frame.pt2)
+        if self.label_frame.pt1:  # Nếu đã có điểm bắt đầu, tức là đang trong quá trình vẽ box
+            pt1 = self.label_frame.pt1
+            pt2 = (event.x(), event.y())  # Sử dụng vị trí thứ hai khi thả chuột làm điểm kết thúc của box
+            # Kiểm tra xem có phải là click đơn (pt1 và pt2 giống nhau) không
+            if pt1 == pt2:
+                self.label_frame.pt1 = None  # Xóa điểm bắt đầu
+                return  # Không làm gì nếu là click đơn
+            # Tạo record từ hai điểm này
             record = OrderedDict([
                 ('timestamp_hms', self._frame_idx_to_hms(self.render_frame_idx)),
                 ('timestamp_hmsf', self._frame_idx_to_hmsf(self.render_frame_idx)),
@@ -628,16 +696,92 @@ class VideoApp(VideoAppViewer):
             self.records.append(record)
             self.records = sorted(self.records, key=lambda x: x['frame_idx'])
             self.add_record_to_preview(record['timestamp_hms'], \
-                                       record['frame_idx'], \
+                                        record['frame_idx'], \
                                         record['object_cls'], \
                                         record['object_id'], \
-                                       (record['x1'], record['y1']), \
-                                       (record['x2'], record['y2']))
+                                        (record['x1'], record['y1']), \
+                                        (record['x2'], record['y2']))
             self.label_frame.pt1 = self.label_frame.pt2 = None
             self.is_force_update = True
-            self.update()
-    
-    
+            self.update()  # Cập nhật giao diện để hiển thị box cuối cùng
+
+        # Làm sạch điểm bắt đầu khi thả chuột
+        self.label_frame.pt1 = None
+
+
+    # def paintEvent(self, event):
+    #     painter = QPainter(self)
+    #     if self.label_frame.pt1:  # Nếu có điểm bắt đầu
+    #         if self.label_frame.pt2:  # Nếu có cả hai điểm
+    #             pt2 = self.label_frame.pt2  # Sử dụng pt2 làm điểm kết thúc
+    #             pen = QPen(QColor(255, 0, 0))  # Màu đỏ
+    #             pen.setWidth(4)  # Độ rộng của đường viền
+    #             painter.setPen(pen)
+    #             # Vẽ box từ pt1 đến pt2
+    #             painter.drawRect(self.label_frame.pt1[0], self.label_frame.pt1[1], 
+    #                              pt2[0] - self.label_frame.pt1[0], 
+    #                              pt2[1] - self.label_frame.pt1[1])
+    #         else:  # Nếu chỉ có điểm bắt đầu (đang kéo thả chuột)
+    #             pt1 = self.label_frame.pt1
+    #             pt2 = (self.mapFromGlobal(QCursor.pos()).x(), self.mapFromGlobal(QCursor.pos()).y())  # Vị trí hiện tại của chuột
+    #             pen = QPen(QColor(255, 0, 0))  # Màu đỏ
+    #             pen.setWidth(2)  # Độ rộng của đường viền
+    #             painter.setPen(pen)
+    #             # Vẽ box từ pt1 đến vị trí hiện tại của con trỏ chuột
+    #             painter.drawRect(pt1[0], pt1[1], 
+    #                              pt2[0] - pt1[0], 
+    #                              pt2[1] - pt1[1])
+    #             # Vẽ điểm bắt đầu
+    #             painter.setBrush(QBrush(QColor(255, 0, 0)))  # Màu đỏ
+    #             painter.drawEllipse(pt1[0] - 3, pt1[1] - 3, 6, 6)  # Điểm có bán kính 3
+
+    # @pyqtSlot()
+    # def event_frame_mouse_press(self, event):
+    #     if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
+    #         if event.button() == Qt.LeftButton:
+    #             self.label_frame.pt1 = (event.x(), event.y())
+    #             self.label_frame.pt2 = None  # Reset điểm thứ hai
+
+    # @pyqtSlot()
+    # def event_frame_mouse_move(self, event):
+    #     if self.label_frame.pt1:
+    #         self.label_frame.pt2 = (event.x(), event.y())
+    #         self.update()
+
+    # @pyqtSlot()
+    # def event_frame_mouse_release(self, event):
+    #     if self.label_frame.pt1:
+    #         pt1 = self.label_frame.pt1
+    #         if self.label_frame.pt2:  # Nếu có pt2 (đã kéo thả chuột)
+    #             pt2 = self.label_frame.pt2
+    #         else:  # Nếu không có pt2 (chỉ nhấn và thả ngay lập tức)
+    #             pt2 = (event.x(), event.y())
+    #         record = OrderedDict([
+    #             ('timestamp_hms', self._frame_idx_to_hms(self.render_frame_idx)),
+    #             ('timestamp_hmsf', self._frame_idx_to_hmsf(self.render_frame_idx)),
+    #             ('frame_idx', self.render_frame_idx), ('fps', self.video_fps),
+    #             ('object_cls', self.classes_list[self.current_class_index]), ('object_cls', self.classes_list[self.current_class_index]),
+    #             ('object_idx', self.object_id), ('object_id', self.object_id),
+    #             ('frame_height', self.frame_height), ('frame_width', self.frame_width),
+    #             ('scale_height', self.scale_height), ('scale_width', self.scale_width),
+    #             ('x1', pt1[0]), ('y1', pt1[1]), ('x2', pt2[0]), ('y2', pt2[1]),
+    #             ('center_x', (pt1[0]+pt2[0])//2), ('center_y', (pt1[1]+pt2[1])//2)
+    #         ])
+    #         self.records.append(record)
+    #         self.records = sorted(self.records, key=lambda x: x['frame_idx'])
+    #         self.add_record_to_preview(record['timestamp_hms'], \
+    #                                     record['frame_idx'], \
+    #                                     record['object_cls'], \
+    #                                     record['object_id'], \
+    #                                     (record['x1'], record['y1']), \
+    #                                     (record['x2'], record['y2']))
+    #         self.label_frame.pt1 = self.label_frame.pt2 = None
+    #         self.is_force_update = True
+    #         self.update()
+            
+            
+            
+            
 
     @pyqtSlot()
     def event_preview_double_clicked(self):
