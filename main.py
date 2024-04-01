@@ -30,7 +30,8 @@ from tkinter import filedialog
 import tkinter as tk
 
 
-# open video
+# Open video
+
 def get_video_file():
     root = tk.Tk()
     root.withdraw()  # Hide the main window
@@ -39,16 +40,13 @@ def get_video_file():
 
 video_file = get_video_file()
 
-# Check if a file is selected
 if not video_file:
     print("No file selected. Exiting.")
     exit()
 
-#utlis
-
+# Utils
 
 LOGGER = logging.getLogger(__name__)
-
 
 def log_handler(*loggers, logname: str = ''):
     """[summary]
@@ -91,7 +89,7 @@ def func_profile(func):
     return wrapped
 
 
-#view
+# View
 
 class VideoFrameViewer(QLabel):
     def __init__(self, parent=None):
@@ -296,9 +294,7 @@ class VideoAppViewer(QWidget):
         self.table_preview_records.removeRow(row_idx)
 
 
-global click_list
-global positions
-positions, click_list = [], []
+# App
 
 class VideoApp(VideoAppViewer):
     def __init__(self, videopath: str, outpath: str, **config):
@@ -308,7 +304,7 @@ class VideoApp(VideoAppViewer):
         self.title = self.config.get('title', 'IGH Annotation Tool')
         self.object_id = 1
         self.current_class_index = 0
-        #self.classes_list = ['A', 'B', 'C', 'D', 'E']
+        # self.classes_list = ['A', 'B', 'C', 'D', 'E']
         self.classes_list = config.get('classes', ['A', 'B', 'C', 'D', 'E'])
         self.object_class = self.classes_list[self.current_class_index]
         super().__init__(title=self.title)
@@ -668,7 +664,7 @@ class VideoApp(VideoAppViewer):
         exist_msg = 'File <b>{}</b> exist.<br/><br/>\
                          Do you want to replace?'.format(self.outpath)
         info_msg = 'Save at <b>{}</b><br/>\
-                    total records: {}'.format(self.outpath, len(self.records))
+                    Total records: {}'.format(self.outpath, len(self.records))
 
         # check the file existense
         exist_reply = QMessageBox.No

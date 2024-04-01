@@ -7,7 +7,7 @@ author: 'Tung'
 # - style: QPen style
 draw:
   color: [255, 0, 0]
-  thickness: 2
+  thickness: 7
   style: Qt.SolidLine
 
 # select configuration for QPen - only show when selected
@@ -16,7 +16,7 @@ draw:
 # - style: QPen style
 select:
   color: [255, 0, 255]
-  thickness: 3
+  thickness: 7
   style: Qt.SolidLine
 
 # label configuration for cv2 - show drawn recorded
@@ -24,16 +24,20 @@ select:
 # - thickness {int}: label thickness
 label:
   color: [0, 0, 255]
-  thickness: 2
+  thickness: 7
 
 # limit_nlabel: limited number of labels per frame, no limit if value is None
 limit_nlabel: 10000000
 
 
 classes:
-  - Apple
-  - Banana
-  - Carrot
-  - Dog
-  - Elephant
-  - dsdsss
+ 
+#  thucquan.pt: 
+  - Viem_thuc_quan 
+  - Ung_thu_thuc_quan
+#  daday.pt: 
+  - Viem_da_day_HP_am 
+  - Viem_da_day_HP_duong 
+  - Ung_thu_da_day
+#  htt.pt: 
+  - Loet_HTT
