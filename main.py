@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QDesktopWidget, QGridLayout,
                              QGroupBox, QHBoxLayout, QHeaderView, QLabel,
                              QPushButton, QSlider, QStyle, QTableWidget,
                              QTableWidgetItem, QVBoxLayout, QWidget, 
-                             QMessageBox, QWidget, QApplication, QFileDialog, QFrame)
+                             QMessageBox, QWidget, QApplication, QFileDialog, QFrame, QMenu, QAction)
 
 """some utility function"""
 import logging
@@ -99,8 +99,7 @@ class VideoFrameViewer(QLabel):
         self.is_selecting = False
         self.pt1 = self.pt2 = None
         self.select_pt1 = self.select_pt2 = None
-        self.setCursor(Qt.CrossCursor)
-
+        
         # case: draw config
         self.draw_color = QColor(0, 0, 0)
         self.draw_thickness = 1
@@ -110,6 +109,17 @@ class VideoFrameViewer(QLabel):
         self.select_color = QColor(0, 0, 0)
         self.select_thickness = 2
         self.select_style = Qt.SolidLine
+        
+        # cursor
+        cursor_image = QPixmap(3000, 3000)
+        cursor_image.fill(Qt.transparent)  
+        painter = QPainter(cursor_image)
+        painter.setPen(Qt.red)  
+        painter.drawLine(1500, 0, 1500, 3000) 
+        painter.drawLine(0, 1500, 3000, 1500) 
+        painter.end()
+        cursor = QCursor(cursor_image, 1500, 1500)  
+        self.setCursor(cursor)
 
     def revise_coor(self, pt1: tuple, pt2: tuple):
         revise_pt1 = (min(pt1[0], pt2[0]), min(pt1[1], pt2[1]))
@@ -139,15 +149,6 @@ class VideoFrameViewer(QLabel):
 
 class VideoAppViewer(QWidget):
     def __init__(self, title='IGH Annotation Tool'):
-        """init
-
-        Arguments:
-            QWidget {[type]} -- default qt widget
-
-        Keyword Arguments:
-            title {str} -- window title (default: {'IGH Annotation Tool'})
-        """
-
         super().__init__()
         self.logger = logging.getLogger(__name__)
         self.title = title
@@ -158,7 +159,7 @@ class VideoAppViewer(QWidget):
 
         # init window - init and set default config about window
         self.setWindowTitle(self.title)
-
+        
         # grid: root layout
         self.grid_root = QGridLayout()
         self.setLayout(self.grid_root)
@@ -175,12 +176,25 @@ class VideoAppViewer(QWidget):
 
         # vbox_panel/hbox_video: show process about video
         hbox_video_slider = QHBoxLayout()
+        
         self.btn_play_video = QPushButton()
+        self.btn_play_video_back_frame = QPushButton()
+        
+        
         self.btn_play_video.setEnabled(True)
+        self.btn_play_video_back_frame.setEnabled(True)
+        
+        
         self.btn_play_video.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+        # self.btn_play_video_back_frame.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
+        
+        
         self.slider_video = QSlider(Qt.Horizontal)
         self.slider_video.setRange(0, 0)
         hbox_video_slider.addWidget(self.btn_play_video)
+        # hbox_video_slider.addWidget(self.btn_play_video_back_frame)
+        
+        
         hbox_video_slider.addWidget(self.slider_video)
         vbox_panels.addLayout(hbox_video_slider)
 
@@ -256,8 +270,15 @@ class VideoAppViewer(QWidget):
 
         # vbox_option/hbox_jump_records: jump to next or previous record
         hbox_jump_records = QHBoxLayout()
+        self.btn_play_video_next_frame = QPushButton('Continue')
+        self.btn_play_video_next_frame.setEnabled(True)
+        self.btn_play_video_next_frame.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton))
+        
         self.btn_previous_record = QPushButton('<< Previous Record')
         self.btn_next_record = QPushButton('Next Record >>')
+        
+        
+        hbox_jump_records.addWidget(self.btn_play_video_next_frame)
         hbox_jump_records.addWidget(self.btn_previous_record)
         hbox_jump_records.addWidget(self.btn_next_record)
         vbox_option.addLayout(hbox_jump_records)
@@ -296,7 +317,6 @@ class VideoAppViewer(QWidget):
 
 
 # App
-
 class VideoApp(VideoAppViewer):
     def __init__(self, videopath: str, outpath: str, **config):
         self.videopath = videopath
@@ -305,11 +325,10 @@ class VideoApp(VideoAppViewer):
         self.title = self.config.get('title', 'IGH Annotation Tool')
         self.object_id = 1
         self.current_class_index = 0
-        # self.classes_list = ['A', 'B', 'C', 'D', 'E']
         self.classes_list = config.get('classes', ['A', 'B', 'C', 'D', 'E'])
         self.object_class = self.classes_list[self.current_class_index]
         super().__init__(title=self.title)
-
+        
         # draw config
         if self.config.get('draw') and isinstance(self.config['draw'], dict):
             draw_config = self.config['draw']
@@ -345,14 +364,24 @@ class VideoApp(VideoAppViewer):
         self.slider_video.setRange(0, self.frame_count-1)
         self.slider_video.sliderMoved.connect(self.on_slider_moved)
         self.slider_video.sliderReleased.connect(self.on_slider_released)
+        
         self.btn_play_video.clicked.connect(self.on_play_video_clicked)
+        #self.btn_play_video_back_frame.clicked.connect(self.on_back_video_clicked)
+        self.btn_play_video_next_frame.clicked.connect(self.on_next_video_clicked)
+        
         self.label_frame.mousePressEvent = self.event_frame_mouse_press
         self.label_frame.mouseMoveEvent = self.event_frame_mouse_move
         self.label_frame.mouseReleaseEvent = self.event_frame_mouse_release
         self.btn_previous_record.clicked.connect(self._goto_previous_record)
         self.btn_next_record.clicked.connect(self._goto_next_record)
         self.btn_export_records.clicked.connect(self.save_file)
+        
         self.table_preview_records.doubleClicked.connect(self.event_preview_double_clicked)
+        
+        # self.table_preview_records.doubleClicked.connect(self.event_preview_double_clicked)
+        # self.table_preview_records.itemDoubleClicked.clicked.connect(self.event_remove_record)
+        
+        
         self.show()
 
     @property
@@ -456,7 +485,7 @@ class VideoApp(VideoAppViewer):
                 self.slider_video.setValue(self.render_frame_idx)
         wait_time = int(1000/self.video_fps)
         QTimer.singleShot(wait_time, self._update_frame)
-
+        
 
     def _update_frame_status(self, frame_idx: int, err: str = ''):
         """update frame status
@@ -556,89 +585,28 @@ class VideoApp(VideoAppViewer):
             self.btn_play_video.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
 
     # @pyqtSlot()
-    # def event_frame_mouse_press(self, event):
-    #     """label frame press mouse event
-    #     - Qt.LeftButton: drawing
-    #     - Qt.RightButton: select to delete
-    #     Arguments:
-    #         event {PyQt5.QtGui.QMouseEvent} -- event object
-    #     """
-    #     if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
-    #         if event.button() == Qt.LeftButton:
-    #             nrecords = self._get_nrecord_in_current_frame()
-    #             if self.limit_nlabel is not None and nrecords and int(self.limit_nlabel) <= nrecords:
+    # def on_back_video_clicked(self):
+    #     """control to play or pause the video"""
+    #     self.is_playing_video = not self.is_playing_video
+    #     if self.is_playing_video:
+    #         self.btn_play_video_back_frame.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
+    #         self.target_frame_idx = max(0, self.target_frame_idx-1)
+    #     else:
+    #         self.btn_play_video_back_frame.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
 
-    #                 self.logger.warning('not available to add a new record (exist=%d, limit=%d)', \
-    #                                     nrecords, self.limit_nlabel)
-    #             else:
-    #                 self.label_frame.is_drawing = True
-    #                 self.label_frame.is_selecting = False
-    #                 self.logger.debug('press mouse at (%d, %d)', event.x(), event.y())
-    #                 self.label_frame.pt1 = (event.x(), event.y())
-    #         elif event.button() == Qt.RightButton:
-    #             closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
-    #             if closest_record:
-    #                 pt1 = (closest_record['x1'], closest_record['y1'])
-    #                 pt2 = (closest_record['x2'], closest_record['y2'])
-    #                 message = '<b>Do you want to delete the record ?</b><br/><br/> \
-    #                 frame index -\t{} <br/> position -\t{} {}'.format(
-    #                     closest_record['frame_idx'], str(pt1), str(pt2))
-    #                 reply = QMessageBox.question(self, 'Delete Record', message, \
-    #                                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-    #                 if reply == QMessageBox.Yes:
-    #                     self._remove_record(closest_record['frame_idx'], pt1, pt2)
-    #                     self.is_force_update = True
-    #                     self.update()
 
-    # @pyqtSlot()
-    # def event_frame_mouse_move(self, event):
-    #     if self.label_frame.is_drawing and self._check_coor_in_frame(event.x(), event.y()):
-    #         self.logger.debug('move mouse at (%d, %d)', event.x(), event.y())
-    #         self.label_frame.pt2 = (event.x(), event.y())
-    #         self.update()
-    #     elif not self.label_frame.is_drawing and not self.is_playing_video:
-    #         closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
-    #         if closest_record:
-    #             self.label_frame.is_selecting = True
-    #             self.label_frame.select_pt1 = (closest_record['x1'], closest_record['y1'])
-    #             self.label_frame.select_pt2 = (closest_record['x2'], closest_record['y2'])
-    #         else:
-    #             self.label_frame.is_selecting = False
-    #             self.label_frame.select_pt1 = self.label_frame.select_pt2 = None
-    #         self.update()
+    @pyqtSlot()
+    def on_next_video_clicked(self):
+        """control to play or pause the video"""
+        # self.is_playing_video = not self.is_playing_video
+        if self.is_playing_video:
+            self.btn_play_video_next_frame.setIcon(self.style().standardIcon(QStyle.SP_ArrowRight))
+            self.target_frame_idx = min(self.target_frame_idx+1, self.frame_count-1)
+        else:
+            self.btn_play_video_next_frame.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton))
 
-    # @pyqtSlot()
-    # def event_frame_mouse_release(self, event):
-    #     if self.label_frame.is_drawing:
-    #         self.label_frame.is_drawing = False
-    #         self.logger.debug('release mouse at (%d, %d)', event.x(), event.y())
-    #         if self._check_coor_in_frame(event.x(), event.y()):
-    #             self.label_frame.pt2 = (event.x(), event.y())
-    #         pt1, pt2 = self.label_frame.revise_coor(self.label_frame.pt1, self.label_frame.pt2)
-    #         record = OrderedDict([
-    #             ('timestamp_hms', self._frame_idx_to_hms(self.render_frame_idx)),
-    #             ('timestamp_hmsf', self._frame_idx_to_hmsf(self.render_frame_idx)),
-    #             ('frame_idx', self.render_frame_idx), ('fps', self.video_fps),
-    #             ('object_cls', self.classes_list[self.current_class_index]), ('object_cls', self.classes_list[self.current_class_index]),
-    #             ('object_idx', self.object_id), ('object_id', self.object_id),
-    #             ('frame_height', self.frame_height), ('frame_width', self.frame_width),
-    #             ('scale_height', self.scale_height), ('scale_width', self.scale_width),
-    #             ('x1', pt1[0]), ('y1', pt1[1]), ('x2', pt2[0]), ('y2', pt2[1]),
-    #             ('center_x', (pt1[0]+pt2[0])//2), ('center_y', (pt1[1]+pt2[1])//2)
-    #         ])
-    #         self.records.append(record)
-    #         self.records = sorted(self.records, key=lambda x: x['frame_idx'])
-    #         self.add_record_to_preview(record['timestamp_hms'], \
-    #                                    record['frame_idx'], \
-    #                                     record['object_cls'], \
-    #                                     record['object_id'], \
-    #                                    (record['x1'], record['y1']), \
-    #                                    (record['x2'], record['y2']))
-    #         self.label_frame.pt1 = self.label_frame.pt2 = None
-    #         self.is_force_update = True
-    #         self.update()
-    
-    
+
+        
     # Frame event
     @pyqtSlot()
     def event_frame_mouse_press(self, event):
@@ -651,20 +619,20 @@ class VideoApp(VideoAppViewer):
         if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
             if event.button() == Qt.LeftButton:
                 self.label_frame.pt1 = (event.x(), event.y())  # Lưu điểm bắt đầu khi nhấn chuột
-            elif event.button() == Qt.RightButton:
-                closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
-                if closest_record:
-                    pt1 = (closest_record['x1'], closest_record['y1'])
-                    pt2 = (closest_record['x2'], closest_record['y2'])
-                    message = '<b>Do you want to delete the record ?</b><br/><br/> \
-                    frame index -\t{} <br/> position -\t{} {}'.format(
-                        closest_record['frame_idx'], str(pt1), str(pt2))
-                    reply = QMessageBox.question(self, 'Delete Record', message, \
-                                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                    if reply == QMessageBox.Yes:
-                        self._remove_record(closest_record['frame_idx'], pt1, pt2)
-                        self.is_force_update = True
-                        self.update()
+            # elif event.button() == Qt.Key_Z:
+            #     closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
+            #     if closest_record:
+            #         pt1 = (closest_record['x1'], closest_record['y1'])
+            #         pt2 = (closest_record['x2'], closest_record['y2'])
+            #         message = '<b>Do you want to delete the record ?</b><br/><br/> \
+            #         frame index -\t{} <br/> position -\t{} {}'.format(
+            #             closest_record['frame_idx'], str(pt1), str(pt2))
+            #         reply = QMessageBox.question(self, 'Delete Record', message, \
+            #                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            #         if reply == QMessageBox.Yes:
+            #             self._remove_record(closest_record['frame_idx'], pt1, pt2)
+            #             self.is_force_update = True
+            #             self.update()
 
     @pyqtSlot()
     def event_frame_mouse_move(self, event):
@@ -709,85 +677,50 @@ class VideoApp(VideoAppViewer):
         self.label_frame.pt1 = None
 
 
-    # def paintEvent(self, event):
-    #     painter = QPainter(self)
-    #     if self.label_frame.pt1:  # Nếu có điểm bắt đầu
-    #         if self.label_frame.pt2:  # Nếu có cả hai điểm
-    #             pt2 = self.label_frame.pt2  # Sử dụng pt2 làm điểm kết thúc
-    #             pen = QPen(QColor(255, 0, 0))  # Màu đỏ
-    #             pen.setWidth(4)  # Độ rộng của đường viền
-    #             painter.setPen(pen)
-    #             # Vẽ box từ pt1 đến pt2
-    #             painter.drawRect(self.label_frame.pt1[0], self.label_frame.pt1[1], 
-    #                              pt2[0] - self.label_frame.pt1[0], 
-    #                              pt2[1] - self.label_frame.pt1[1])
-    #         else:  # Nếu chỉ có điểm bắt đầu (đang kéo thả chuột)
-    #             pt1 = self.label_frame.pt1
-    #             pt2 = (self.mapFromGlobal(QCursor.pos()).x(), self.mapFromGlobal(QCursor.pos()).y())  # Vị trí hiện tại của chuột
-    #             pen = QPen(QColor(255, 0, 0))  # Màu đỏ
-    #             pen.setWidth(2)  # Độ rộng của đường viền
-    #             painter.setPen(pen)
-    #             # Vẽ box từ pt1 đến vị trí hiện tại của con trỏ chuột
-    #             painter.drawRect(pt1[0], pt1[1], 
-    #                              pt2[0] - pt1[0], 
-    #                              pt2[1] - pt1[1])
-    #             # Vẽ điểm bắt đầu
-    #             painter.setBrush(QBrush(QColor(255, 0, 0)))  # Màu đỏ
-    #             painter.drawEllipse(pt1[0] - 3, pt1[1] - 3, 6, 6)  # Điểm có bán kính 3
-
-    # @pyqtSlot()
-    # def event_frame_mouse_press(self, event):
-    #     if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
-    #         if event.button() == Qt.LeftButton:
-    #             self.label_frame.pt1 = (event.x(), event.y())
-    #             self.label_frame.pt2 = None  # Reset điểm thứ hai
-
-    # @pyqtSlot()
-    # def event_frame_mouse_move(self, event):
-    #     if self.label_frame.pt1:
-    #         self.label_frame.pt2 = (event.x(), event.y())
-    #         self.update()
-
-    # @pyqtSlot()
-    # def event_frame_mouse_release(self, event):
-    #     if self.label_frame.pt1:
-    #         pt1 = self.label_frame.pt1
-    #         if self.label_frame.pt2:  # Nếu có pt2 (đã kéo thả chuột)
-    #             pt2 = self.label_frame.pt2
-    #         else:  # Nếu không có pt2 (chỉ nhấn và thả ngay lập tức)
-    #             pt2 = (event.x(), event.y())
-    #         record = OrderedDict([
-    #             ('timestamp_hms', self._frame_idx_to_hms(self.render_frame_idx)),
-    #             ('timestamp_hmsf', self._frame_idx_to_hmsf(self.render_frame_idx)),
-    #             ('frame_idx', self.render_frame_idx), ('fps', self.video_fps),
-    #             ('object_cls', self.classes_list[self.current_class_index]), ('object_cls', self.classes_list[self.current_class_index]),
-    #             ('object_idx', self.object_id), ('object_id', self.object_id),
-    #             ('frame_height', self.frame_height), ('frame_width', self.frame_width),
-    #             ('scale_height', self.scale_height), ('scale_width', self.scale_width),
-    #             ('x1', pt1[0]), ('y1', pt1[1]), ('x2', pt2[0]), ('y2', pt2[1]),
-    #             ('center_x', (pt1[0]+pt2[0])//2), ('center_y', (pt1[1]+pt2[1])//2)
-    #         ])
-    #         self.records.append(record)
-    #         self.records = sorted(self.records, key=lambda x: x['frame_idx'])
-    #         self.add_record_to_preview(record['timestamp_hms'], \
-    #                                     record['frame_idx'], \
-    #                                     record['object_cls'], \
-    #                                     record['object_id'], \
-    #                                     (record['x1'], record['y1']), \
-    #                                     (record['x2'], record['y2']))
-    #         self.label_frame.pt1 = self.label_frame.pt2 = None
-    #         self.is_force_update = True
-    #         self.update()
-            
-            
-            
-            
 
     @pyqtSlot()
     def event_preview_double_clicked(self):
         row = self.table_preview_records.currentRow()
         frame_idx = int(self.table_preview_records.item(row, 1).text())
+        # pt1 pt2, tra điểm có toạ độ pt1 
         self.target_frame_idx = frame_idx
+    
+    @pyqtSlot()  
+    def contextMenuEvent(self, event):
+        menu = QMenu(self)
+        remove_action = QAction("Remove", self)
+        remove_action.triggered.connect(self.event_remove_record)
+        menu.addAction(remove_action)
+        menu.exec_(event.globalPos())
+    
+    @pyqtSlot()    
+    def _get_selected_record_in_current_frame(self):
+        """get the record selected by the event_preview_double_clicked function
+        Returns:
+            {OrderedDict} -- the selected record
+        """
+        row = self.table_preview_records.currentRow()
+        frame_idx = int(self.table_preview_records.item(row, 1).text())
+        records = self._get_records_by_frame_idx(frame_idx)
+        return records[0] if records else None
+
+    
+    @pyqtSlot()
+    def event_remove_record(self, event):
+        #if event.button() == Qt.RightButton:
+                selected_record = self._get_selected_record_in_current_frame(event.x(), event.y())
+                if selected_record:
+                    pt1 = (selected_record['x1'], selected_record['y1'])
+                    pt2 = (selected_record['x2'], selected_record['y2'])
+                    message = '<b>Do you want to delete the record ?</b><br/><br/> \
+                    frame index -\t{} <br/> position -\t{} {}'.format(
+                        selected_record['frame_idx'], str(pt1), str(pt2))
+                    reply = QMessageBox.question(self, 'Delete Record', message, \
+                                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                    if reply == QMessageBox.Yes:
+                        self._remove_record(selected_record['frame_idx'], pt1, pt2)
+                        self.is_force_update = True
+                        self.update()
 
     def draw_rects(self, frame_idx: int, frame: np.ndarray):
         rest_records = list(filter(lambda x: x['frame_idx'] == frame_idx, self.records))
@@ -821,7 +754,7 @@ class VideoApp(VideoAppViewer):
 
         # check if the application is going to close
         reply = QMessageBox.about(self, 'Info', info_msg)
-        self.close()
+        self.close()         
     
     def keyPressEvent(self, event):
         """global keyboard event"""
