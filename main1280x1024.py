@@ -287,12 +287,14 @@ class VideoAppViewer(QWidget):
         hbox_jump_records.addWidget(self.btn_previous_record)
         hbox_jump_records.addWidget(self.btn_next_record)
         vbox_option.addLayout(hbox_jump_records)
-
+        
+        self.btn_remove_last_box = QPushButton('Remove Last Box')
+        vbox_option.addWidget(self.btn_remove_last_box)
+        
         # vbox_option/btn_export: export records
         self.btn_export_records = QPushButton('Export')
         vbox_option.addWidget(self.btn_export_records)
-        # self.btn_new_file = QPushButton('Open New File')
-        # vbox_option.addWidget(self.btn_new_file)
+        
 
         # vbox_option/table_preview_record: preview the summary of records
         self.table_preview_records = self._get_preview_table(self)
@@ -325,8 +327,11 @@ class VideoAppViewer(QWidget):
         self.table_preview_records.setItem(0, 5, QTableWidgetItem(str(pt2)))
         self.table_preview_records.sortByColumn(0, Qt.AscendingOrder)
     
-    def remove_record_from_preview(self, row_idx: int):
-        self.table_preview_records.removeRow(row_idx)
+    # def remove_record_from_preview(self, row_idx: int):
+    #     self.table_preview_records.removeRow(row_idx)
+    def remove_record_from_preview(self, num_rows: int = 1):
+        #for _ in range(num_rows):
+            self.table_preview_records.removeRow(0)
 
 
 # App
@@ -388,7 +393,7 @@ class VideoApp(VideoAppViewer):
         self.btn_previous_record.clicked.connect(self._goto_previous_record)
         self.btn_next_record.clicked.connect(self._goto_next_record)
         self.btn_export_records.clicked.connect(self.save_file)
-        #self.btn_new_file.clicked.connect(self.new_file)
+        self.btn_remove_last_box.clicked.connect(self.remove_last_box)
         
         self.table_preview_records.doubleClicked.connect(self.event_preview_double_clicked)
         
@@ -400,7 +405,7 @@ class VideoApp(VideoAppViewer):
         # Set the application window to full screen
         # Set the application window size and state
         #self.setWindowState(Qt.WindowFullScreen)
-        # self.resize(1920, 1080)  # Set the default window size to 1920x1080
+        self.resize(1920, 1080)  # Set the default window size to 1920x1080
 
         # # Get the size of the desktop
         # desktop = QDesktopWidget().screenGeometry()
@@ -411,8 +416,9 @@ class VideoApp(VideoAppViewer):
         
     # def new_file(self, path):
     #     pass
-
-
+    
+    
+    
     @property
     def frame_count(self):
         return int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT)) if self.cap else None
@@ -653,7 +659,16 @@ class VideoApp(VideoAppViewer):
         else:
             self.btn_play_video_next_frame.setIcon(self.style().standardIcon(QStyle.SP_DialogYesButton))
 
-
+    @pyqtSlot()
+    def remove_last_box(self):
+        if self.records:
+            last_record = self.records.pop()  # Xoá box mới nhất từ danh sách các box
+            self.remove_record_from_preview(last_record['frame_idx'])
+            self.is_force_update = True
+            self._update_frame()
+            self.update()
+            
+            
         
     # Frame event
     @pyqtSlot()
@@ -668,19 +683,19 @@ class VideoApp(VideoAppViewer):
             if event.button() == Qt.LeftButton:
                 self.label_frame.pt1 = (event.x(), event.y())  # Lưu điểm bắt đầu khi nhấn chuột
             # elif event.button() == Qt.RightButton:
-            #     closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
-            #     if closest_record:
-            #         pt1 = (closest_record['x1'], closest_record['y1'])
-            #         pt2 = (closest_record['x2'], closest_record['y2'])
-            #         message = '<b>Do you want to delete the record ?</b><br/><br/> \
-            #         Frame index -\t{} <br/> Position -\t{} {}'.format(
-            #             closest_record['frame_idx'], str(pt1), str(pt2))
-            #         reply = QMessageBox.question(self, 'Delete Record', message, \
-            #                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            #         if reply == QMessageBox.Yes:
-            #             self._remove_record(closest_record['frame_idx'], pt1, pt2)
-            #             self.is_force_update = True
-            #             self.update()
+                # closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
+                # if closest_record:
+                #     pt1 = (closest_record['x1'], closest_record['y1'])
+                #     pt2 = (closest_record['x2'], closest_record['y2'])
+                #     message = '<b>Do you want to delete the record ?</b><br/><br/> \
+                #     Frame index -\t{} <br/> Position -\t{} {}'.format(
+                #         closest_record['frame_idx'], str(pt1), str(pt2))
+                #     reply = QMessageBox.question(self, 'Delete Record', message, \
+                #                                  QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                #     if reply == QMessageBox.Yes:
+                #         self._remove_record(closest_record['frame_idx'], pt1, pt2)
+                #         self.is_force_update = True
+                #         self.update()
 
     @pyqtSlot()
     def event_frame_mouse_move(self, event):
@@ -718,7 +733,7 @@ class VideoApp(VideoAppViewer):
                 ('object_idx', self.object_id), ('object_id', self.object_id),
                 ('frame_height', self.frame_height), ('frame_width', self.frame_width),
                 ('scale_height', self.scale_height), ('scale_width', self.scale_width),
-                ('x1', pt1[0]), ('y1', pt1[1]), ('x2', pt2[0]), ('y2', pt2[1]),
+                ('x1', pt1[0]), ('y1', pt1[1]-5), ('x2', pt2[0]), ('y2', pt2[1]-5),
                 ('center_x', (pt1[0]+pt2[0])//2), ('center_y', (pt1[1]+pt2[1])//2)
             ])
             self.records.append(record)
