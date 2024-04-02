@@ -401,7 +401,7 @@ class VideoApp(VideoAppViewer):
         # self.table_preview_records.itemDoubleClicked.clicked.connect(self.event_remove_record)
         
         
-        self.show()
+        self.showMaximized()
         # Set the application window to full screen
         # Set the application window size and state
         #self.setWindowState(Qt.WindowFullScreen)
