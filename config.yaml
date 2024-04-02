@@ -7,7 +7,7 @@ author: 'Tung'
 # - style: QPen style
 draw:
   color: [255, 0, 0]
-  thickness: 5
+  thickness: 4
   style: Qt.SolidLine
 
 # select configuration for QPen - only show when selected
@@ -16,7 +16,7 @@ draw:
 # - style: QPen style
 select:
   color: [255, 0, 255]
-  thickness: 5
+  thickness: 4
   style: Qt.SolidLine
 
 # label configuration for cv2 - show drawn recorded
@@ -24,7 +24,7 @@ select:
 # - thickness {int}: label thickness
 label:
   color: [0, 0, 255]
-  thickness: 10
+  thickness: 4
 
 # limit_nlabel: limited number of labels per frame, no limit if value is None
 limit_nlabel: 10000000
