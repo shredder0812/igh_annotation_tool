@@ -10,7 +10,6 @@ from collections import OrderedDict
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
-from time import sleep
 import logging
 from PyQt5.QtCore import Qt, QTimer, pyqtSlot, QRect
 from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QImage, QPixmap, QCursor
@@ -23,9 +22,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QDesktopWidget, QGridLayout,
 """some utility function"""
 import logging
 import sys
-from datetime import datetime
 from functools import wraps
-import os
 from tkinter import filedialog
 import tkinter as tk
 
@@ -176,24 +173,6 @@ class VideoAppViewer(QWidget):
         self.label_frame.setMouseTracking(True)
         vbox_panels.addWidget(self.label_frame)
 
-        # # vbox_panel/hbox_video: show process about video
-        # hbox_video_slider = QHBoxLayout()
-        # self.btn_play_video = QPushButton()
-        # self.btn_play_video_back_frame = QPushButton()
-        # self.btn_play_video.setEnabled(True)
-        # self.btn_play_video_back_frame.setEnabled(True)
-        # self.btn_play_video.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
-        # self.slider_video = QSlider(Qt.Horizontal)
-        # self.slider_video.setRange(0, 0)
-        # hbox_video_slider.addWidget(self.btn_play_video)
-        # hbox_video_slider.addWidget(self.slider_video)
-        # vbox_panels.addLayout(hbox_video_slider)
-
-        # # vbox_panel/label_video_status: show frame index or exception msg
-        # self.label_video_status = QLabel()
-        # self.label_video_status.setAlignment(Qt.AlignCenter)
-        # vbox_panels.addWidget(self.label_video_status)
-
         # vbox_option/group_video_info: show video static info
         self.group_video_info = QGroupBox('Video Information')
         sub_grid = QGridLayout()
@@ -303,16 +282,6 @@ class VideoAppViewer(QWidget):
         vbox_option.addWidget(self.table_preview_records)
 
     
-    # def on_resize(self, event):
-    #     # Lấy kích thước mới của cửa sổ
-    #     new_size = event.size()
-
-    #     # Tính toán kích thước mới cho label_frame dựa trên kích thước của cửa sổ
-    #     video_width = 1280  # Giả sử video_width và video_height là các thuộc tính của label_frame
-    #     video_height = 607.5
-    #     label_frame_size = new_size.width() * video_height / video_width, new_size.height() * video_width / video_height
-    #     self.label_frame.setFixedSize(label_frame_size)
-
     def _get_header_label(self, text: str = ''):
         label = QLabel(text)
         label.setFont(self.font_header)
@@ -412,7 +381,7 @@ class VideoApp(VideoAppViewer):
         # self.table_preview_records.itemDoubleClicked.clicked.connect(self.event_remove_record)
         
         
-        self.show()
+        self.showMaximized()
         # Set the application window to full screen
         # Set the application window size and state
         #self.setWindowState(Qt.WindowFullScreen)
@@ -649,17 +618,7 @@ class VideoApp(VideoAppViewer):
         else:
             self.btn_play_video.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
 
-    # @pyqtSlot()
-    # def on_back_video_clicked(self):
-    #     """control to play or pause the video"""
-    #     self.is_playing_video = not self.is_playing_video
-    #     if self.is_playing_video:
-    #         self.btn_play_video_back_frame.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
-    #         self.target_frame_idx = max(0, self.target_frame_idx-1)
-    #     else:
-    #         self.btn_play_video_back_frame.setIcon(self.style().standardIcon(QStyle.SP_ArrowLeft))
-
-
+    
     @pyqtSlot()
     def on_next_video_clicked(self):
         """control to play or pause the video"""
@@ -710,27 +669,20 @@ class VideoApp(VideoAppViewer):
 
     @pyqtSlot()
     def event_frame_mouse_move(self, event):
-        # if self.label_frame.pt1:  # Nếu đã có điểm bắt đầu, tức là đang trong quá trình vẽ box
-        #     self.label_frame.pt2 = (event.x(), event.y())  # Lưu điểm thứ hai khi di chuyển chuột
-        #     self.update()  # Cập nhật giao diện để hiển thị box tạm thời
-        
-        
         if self.label_frame.pt1:  # Nếu đã có điểm bắt đầu, tức là đang trong quá trình vẽ box
             frame = self._read_frame(self.target_frame_idx)  # Đọc frame từ video
             if frame is not None:
                 pixmap = QPixmap(self._ndarray_to_qimage(frame))  # Chuyển đổi frame thành pixmap
-                # Scale the pixmap to fit the screen while maintaining aspect ratio
-                self.scale_width=1280
-                self.scale_height = int(pixmap.height() * (self.scale_width / pixmap.width()))
-                
-                pixmap = pixmap.scaledToWidth(self.scale_width)
+                # # Scale the pixmap to fit the screen while maintaining aspect ratio
+                # scale_width = 1280
+                # scale_height = 720
+                # pixmap = pixmap.scaled(scale_width, scale_height, Qt.KeepAspectRatio)
                 painter = QPainter(pixmap)
                 painter.setPen(QPen(Qt.red, 3))  # Màu và độ dày của box tạm thời
                 painter.drawRect(QRect(self.label_frame.pt1[0], self.label_frame.pt1[1], event.x() - self.label_frame.pt1[0], event.y() - self.label_frame.pt1[1]))
                 self.label_frame.setPixmap(pixmap)
-                self.label_frame.resize(self.scale_width, self.scale_height)
                 painter.end()
-                self.update() 
+                self.update()  # Cập nhật lại label_frame
 
     @pyqtSlot()
     def event_frame_mouse_release(self, event):
@@ -785,35 +737,7 @@ class VideoApp(VideoAppViewer):
         menu.addAction(remove_action)
         menu.exec_(event.globalPos())
     
-    # @pyqtSlot()    
-    # def _get_selected_record_in_current_frame(self):
-    #     """get the record selected by the event_preview_double_clicked function
-    #     Returns:
-    #         {OrderedDict} -- the selected record
-    #     """
-    #     row = self.table_preview_records.currentRow()
-    #     frame_idx = int(self.table_preview_records.item(row, 1).text())
-    #     records = self._get_records_by_frame_idx(frame_idx)
-    #     return records[0] if records else None
-
-    
-    # @pyqtSlot()
-    # def event_remove_record(self, event):
-    #     #if event.button() == Qt.RightButton:
-    #             selected_record = self._get_selected_record_in_current_frame(event.x(), event.y())
-    #             if selected_record:
-    #                 pt1 = (selected_record['x1'], selected_record['y1'])
-    #                 pt2 = (selected_record['x2'], selected_record['y2'])
-    #                 message = '<b>Do you want to delete the record ?</b><br/><br/> \
-    #                 frame index -\t{} <br/> position -\t{} {}'.format(
-    #                     selected_record['frame_idx'], str(pt1), str(pt2))
-    #                 reply = QMessageBox.question(self, 'Delete Record', message, \
-    #                                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-    #                 if reply == QMessageBox.Yes:
-    #                     self._remove_record(selected_record['frame_idx'], pt1, pt2)
-    #                     self.is_force_update = True
-    #                     self.update()
-
+   
     def draw_rects(self, frame_idx: int, frame: np.ndarray):
         rest_records = list(filter(lambda x: x['frame_idx'] == frame_idx, self.records))
         if not rest_records:
@@ -821,6 +745,8 @@ class VideoApp(VideoAppViewer):
         for record in rest_records:
             pt1, pt2 = (record['x1'], record['y1']), (record['x2'], record['y2'])
             cv2.rectangle(frame, pt1, pt2, self.label_color, self.label_thickness)
+            text = f"{record['object_cls']} | ID: {record['object_id']} | {pt1}, {pt2}"
+            cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
         return frame
 
     

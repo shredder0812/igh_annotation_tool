@@ -776,34 +776,6 @@ class VideoApp(VideoAppViewer):
         menu.addAction(remove_action)
         menu.exec_(event.globalPos())
     
-    # @pyqtSlot()    
-    # def _get_selected_record_in_current_frame(self):
-    #     """get the record selected by the event_preview_double_clicked function
-    #     Returns:
-    #         {OrderedDict} -- the selected record
-    #     """
-    #     row = self.table_preview_records.currentRow()
-    #     frame_idx = int(self.table_preview_records.item(row, 1).text())
-    #     records = self._get_records_by_frame_idx(frame_idx)
-    #     return records[0] if records else None
-
-    
-    # @pyqtSlot()
-    # def event_remove_record(self, event):
-    #     #if event.button() == Qt.RightButton:
-    #             selected_record = self._get_selected_record_in_current_frame(event.x(), event.y())
-    #             if selected_record:
-    #                 pt1 = (selected_record['x1'], selected_record['y1'])
-    #                 pt2 = (selected_record['x2'], selected_record['y2'])
-    #                 message = '<b>Do you want to delete the record ?</b><br/><br/> \
-    #                 frame index -\t{} <br/> position -\t{} {}'.format(
-    #                     selected_record['frame_idx'], str(pt1), str(pt2))
-    #                 reply = QMessageBox.question(self, 'Delete Record', message, \
-    #                                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-    #                 if reply == QMessageBox.Yes:
-    #                     self._remove_record(selected_record['frame_idx'], pt1, pt2)
-    #                     self.is_force_update = True
-    #                     self.update()
 
     def draw_rects(self, frame_idx: int, frame: np.ndarray):
         rest_records = list(filter(lambda x: x['frame_idx'] == frame_idx, self.records))
@@ -812,6 +784,8 @@ class VideoApp(VideoAppViewer):
         for record in rest_records:
             pt1, pt2 = (record['x1'], record['y1']), (record['x2'], record['y2'])
             cv2.rectangle(frame, pt1, pt2, self.label_color, self.label_thickness)
+            text = f"{record['object_cls']} | ID: {record['object_id']} | {pt1}, {pt2}"
+            cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
         return frame
 
     
