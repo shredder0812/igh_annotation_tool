@@ -471,7 +471,7 @@ class VideoApp(VideoAppViewer):
 
     def _check_coor_in_frame(self, coor_x: int, coor_y: int):
         """check the coordinate in mouse event"""
-        return 0 < coor_x < self.scale_width and 0 < coor_y < self.scale_height
+        return 0 < coor_x < self.frame_width and 0 < coor_y < self.frame_height
 
     def _update_video_info(self):
         shape = str((self.frame_width, self.frame_height))
@@ -649,23 +649,25 @@ class VideoApp(VideoAppViewer):
         Arguments:
             event {PyQt5.QtGui.QMouseEvent} -- event object
         """
-        if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
-            if event.button() == Qt.LeftButton:
-                self.label_frame.pt1 = (event.x(), event.y())  # Lưu điểm bắt đầu khi nhấn chuột
-            # elif event.button() == Qt.RightButton:
-                # closest_record = self._get_closest_record_in_current_frame(event.x(), event.y())
-                # if closest_record:
-                #     pt1 = (closest_record['x1'], closest_record['y1'])
-                #     pt2 = (closest_record['x2'], closest_record['y2'])
-                #     message = '<b>Do you want to delete the record ?</b><br/><br/> \
-                #     Frame index -\t{} <br/> Position -\t{} {}'.format(
-                #         closest_record['frame_idx'], str(pt1), str(pt2))
-                #     reply = QMessageBox.question(self, 'Delete Record', message, \
-                #                                  QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                #     if reply == QMessageBox.Yes:
-                #         self._remove_record(closest_record['frame_idx'], pt1, pt2)
-                #         self.is_force_update = True
-                #         self.update()
+        frame = self._read_frame(self.target_frame_idx)  # Đọc frame từ video
+        if frame is not None:
+            pixmap = QPixmap(self._ndarray_to_qimage(frame)) 
+            self.label_frame.setPixmap(pixmap)
+            
+            if self._check_coor_in_frame(event.x(), event.y()) and not self.is_playing_video:
+                if event.button() == Qt.LeftButton:
+                    self.label_frame.pt1 = (event.x(), event.y())
+            #if event.button() == Qt.RightButton:
+                # Handle right button press
+                
+                # frame = self._read_frame(self.target_frame_idx)  # Đọc frame từ video
+                # if frame is not None:
+                #     pixmap = QPixmap(self._ndarray_to_qimage(frame)) 
+                #     self.label_frame.setPixmap(pixmap)
+                    
+                #     if event.button() == Qt.LeftButton:
+                #         self.label_frame.pt1 = (event.x(), event.y())
+           
 
     @pyqtSlot()
     def event_frame_mouse_move(self, event):
@@ -692,7 +694,11 @@ class VideoApp(VideoAppViewer):
             # Kiểm tra xem có phải là click đơn (pt1 và pt2 giống nhau) không
             if pt1 == pt2:
                 self.label_frame.pt1 = None  # Xóa điểm bắt đầu
-                return  # Không làm gì nếu là click đơn
+                # frame = self._read_frame(self.target_frame_idx)  # Đọc frame từ video
+                # if frame is not None:
+                #     pixmap = QPixmap(self._ndarray_to_qimage(frame)) 
+                #     self.label_frame.setPixmap(pixmap)
+                return
             # Tạo record từ hai điểm này
             record = OrderedDict([
                 ('timestamp_hms', self._frame_idx_to_hms(self.render_frame_idx)),
@@ -746,7 +752,7 @@ class VideoApp(VideoAppViewer):
             pt1, pt2 = (record['x1'], record['y1']), (record['x2'], record['y2'])
             cv2.rectangle(frame, pt1, pt2, self.label_color, self.label_thickness)
             text = f"{record['object_cls']} | ID: {record['object_id']} | {pt1}, {pt2}"
-            cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 1, cv2.LINE_AA)
         return frame
 
     
