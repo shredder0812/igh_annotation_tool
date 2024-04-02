@@ -708,9 +708,17 @@ class VideoApp(VideoAppViewer):
             frame = self._read_frame(self.target_frame_idx)  # Đọc frame từ video
             if frame is not None:
                 pixmap = QPixmap(self._ndarray_to_qimage(frame))  # Chuyển đổi frame thành pixmap
+                
                 painter = QPainter(pixmap)
                 painter.setPen(QPen(Qt.red, 3))  # Màu và độ dày của box tạm thời
-                painter.drawRect(QRect(self.label_frame.pt1[0], self.label_frame.pt1[1], event.x() - self.label_frame.pt1[0], event.y() - self.label_frame.pt1[1]))
+                
+                x1_temp = self.label_frame.pt1[0]
+                y1_temp = self.label_frame.pt1[1] - 5
+                x2_temp = event.x() - self.label_frame.pt1[0]
+                y2_temp = event.y() - self.label_frame.pt1[1]
+                
+                
+                painter.drawRect(QRect(x1_temp, y1_temp, x2_temp, y2_temp))
                 self.label_frame.setPixmap(pixmap)
                 painter.end()
                 self.update() 

@@ -156,6 +156,8 @@ class VideoAppViewer(QWidget):
         self.screen = self.desktop.availableGeometry()
         self.font_header = QFont()
         self.font_header.setBold(True)
+        
+        #self.resizeEvent = self.on_resize
 
         # init window - init and set default config about window
         self.setWindowTitle(self.title)
@@ -300,7 +302,16 @@ class VideoAppViewer(QWidget):
         self.table_preview_records = self._get_preview_table(self)
         vbox_option.addWidget(self.table_preview_records)
 
-        
+    
+    # def on_resize(self, event):
+    #     # Lấy kích thước mới của cửa sổ
+    #     new_size = event.size()
+
+    #     # Tính toán kích thước mới cho label_frame dựa trên kích thước của cửa sổ
+    #     video_width = 1280  # Giả sử video_width và video_height là các thuộc tính của label_frame
+    #     video_height = 607.5
+    #     label_frame_size = new_size.width() * video_height / video_width, new_size.height() * video_width / video_height
+    #     self.label_frame.setFixedSize(label_frame_size)
 
     def _get_header_label(self, text: str = ''):
         label = QLabel(text)
@@ -708,10 +719,16 @@ class VideoApp(VideoAppViewer):
             frame = self._read_frame(self.target_frame_idx)  # Đọc frame từ video
             if frame is not None:
                 pixmap = QPixmap(self._ndarray_to_qimage(frame))  # Chuyển đổi frame thành pixmap
+                # Scale the pixmap to fit the screen while maintaining aspect ratio
+                self.scale_width=1280
+                self.scale_height = int(pixmap.height() * (self.scale_width / pixmap.width()))
+                
+                pixmap = pixmap.scaledToWidth(self.scale_width)
                 painter = QPainter(pixmap)
                 painter.setPen(QPen(Qt.red, 3))  # Màu và độ dày của box tạm thời
                 painter.drawRect(QRect(self.label_frame.pt1[0], self.label_frame.pt1[1], event.x() - self.label_frame.pt1[0], event.y() - self.label_frame.pt1[1]))
                 self.label_frame.setPixmap(pixmap)
+                self.label_frame.resize(self.scale_width, self.scale_height)
                 painter.end()
                 self.update() 
 
