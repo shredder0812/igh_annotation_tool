@@ -811,6 +811,7 @@ class VideoApp(VideoAppViewer):
                 self.is_force_update = True
                 self._update_frame()
                 self.update()
+                
     # Frame event
     @pyqtSlot()
     def event_frame_mouse_press(self, event):
