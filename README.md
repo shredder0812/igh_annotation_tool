@@ -29,7 +29,7 @@ python  main.py
 When running the main.py file, a window will appear prompting you to select an MP4 file (recommended video size is 1280x1024). After selecting the file, you will see the main interface as shown in the following image:
 
 <p align="center">
-  <img src="Screenshot 2024-04-13 125427.png" width=1280><br/>
+  <img src="img/main.png" width=1280><br/>
   <i>IGH Annotation Tool Demo</i>
 </p>
 
