@@ -11,18 +11,19 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
 import logging
-from PyQt5.QtCore import Qt, QTimer, pyqtSlot, QRect, QThread, pyqtSignal, QEvent
-from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QImage, QPixmap, QCursor
+from PyQt5.QtCore import Qt, QTimer, pyqtSlot, QRect, QThread, pyqtSignal, QEvent, QPoint
+from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QImage, QPixmap, QCursor, QKeySequence
 from PyQt5.QtWidgets import (QMenuBar, QFileDialog, QAbstractItemView, QDesktopWidget, QGridLayout,
-                             QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                             QPushButton, QSlider, QStyle, QTableWidget, QCheckBox,
-                             QTableWidgetItem, QVBoxLayout, QWidget, QScrollArea,
+                             QGroupBox, QHBoxLayout, QLabel, QLineEdit, QShortcut, QProgressBar,
+                             QPushButton, QSlider, QStyle, QTableWidget, QCheckBox, QTabWidget,
+                             QTableWidgetItem, QVBoxLayout, QWidget, QScrollArea,  QAbstractItemView,
                              QMessageBox, QWidget, QApplication, QMenu, QAction, QDesktopWidget, QTextEdit)
 import logging
 import sys
 from functools import wraps
 from tkinter import filedialog
 import tkinter as tk
+from sortedcontainers import SortedSet, SortedDict
 
 
 global file_path_open
@@ -80,6 +81,8 @@ class VideoFrameViewer(QLabel):
         self.pt1 = self.pt2 = None
         self.select_pt1 = self.select_pt2 = None
         
+        self.scale_factor=1
+        
         # case: draw config
         self.draw_color = QColor(0, 0, 0)
         self.draw_thickness = 1
@@ -100,7 +103,7 @@ class VideoFrameViewer(QLabel):
         painter.end()
         cursor = QCursor(cursor_image, 1500, 1500)  
         self.setCursor(cursor)
-
+        
     def revise_coor(self, pt1: tuple, pt2: tuple):
         revise_pt1 = (min(pt1[0], pt2[0]), min(pt1[1], pt2[1]))
         revise_pt2 = (max(pt1[0], pt2[0]), max(pt1[1], pt2[1]))
@@ -116,7 +119,7 @@ class VideoFrameViewer(QLabel):
         painter.end()
 
     def paintEvent(self, event):
-        super().paintEvent(event)
+        super().paintEvent(event)    
         if self.is_drawing and self.pt1 and self.pt2:
             pen = QPen(self.draw_color, self.draw_thickness, self.draw_style)
             pt1, pt2 = self.revise_coor(self.pt1, self.pt2)
@@ -126,6 +129,7 @@ class VideoFrameViewer(QLabel):
             pen = QPen(self.select_color, self.select_thickness, self.select_style)
             pt1, pt2 = self.revise_coor(self.select_pt1, self.select_pt2)
             self._draw_rect(pt1, pt2, pen)
+            
 
 class VideoAppViewer(QWidget):
     def __init__(self, title='IGH Annotation Tool'):
@@ -140,13 +144,14 @@ class VideoAppViewer(QWidget):
         self.font_size.setPointSize(12)
         self.font_size_header = QFont()
         self.font_size_header.setPointSize(14)
+        self.videopath = video_file
+        self.cap = cv2.VideoCapture(self.videopath)
                 
         # auto save thread
         self.auto_save_enabled = False
         self.auto_save_thread = AutoSaveThread()
         self.auto_save_thread.save_completed.connect(self.auto_save)
         self.auto_save_thread.start()
-        
         
         # init window - init and set default config about window
         self.setWindowTitle(self.title)
@@ -165,7 +170,6 @@ class VideoAppViewer(QWidget):
         self.menu_bar_no.setFixedHeight(3)
         vbox_panels.addWidget(self.menu_bar_no)
         self.init_menu_bar()
-        
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFixedWidth(1300) 
@@ -175,7 +179,6 @@ class VideoAppViewer(QWidget):
         self.label_frame.setAlignment(Qt.AlignTop)
         self.label_frame.setMouseTracking(True)
         self.scroll_area.setWidget(self.label_frame)
-
         # vbox_option/group_video_info: show video static info
         
         self.menu_bar_noa = QMenuBar(self)
@@ -242,6 +245,7 @@ class VideoAppViewer(QWidget):
         hbox_video_controls.addWidget(self.input_frame_number)
         self.btn_jump_to_frame = QPushButton('Jump to Frame (Enter)')
         self.btn_jump_to_frame.setFont(self.font_size)
+        #self.btn_jump_to_frame.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_jump_to_frame.clicked.connect(self.jump_to_frame)
         hbox_video_controls.addWidget(self.btn_jump_to_frame)
         vbox_option.addLayout(hbox_video_controls)
@@ -249,19 +253,71 @@ class VideoAppViewer(QWidget):
         # vbox_panel/hbox_video: show process about video
         self.btn_play_video_info = QGroupBox('Play/Pause Video (P)')
         self.btn_play_video_info.setFont(self.font_size_header)
+        
+        hbox_video_controler = QHBoxLayout()
         hbox_video_slider = QHBoxLayout()
+        
         self.btn_play_video = QPushButton()
-        self.btn_play_video_back_frame = QPushButton()
+        #self.btn_play_video.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_play_video.setEnabled(True)
-        self.btn_play_video_back_frame.setEnabled(True)
         self.btn_play_video.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+        self.btn_button_a = QPushButton()
+        self.btn_button_b = QPushButton()
+        self.btn_button_c = QPushButton()
+        self.btn_button_d = QPushButton()
+        self.btn_button_a.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekForward))
+        self.btn_button_b.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekBackward))
+        self.btn_button_c.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipForward))
+        self.btn_button_d.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipBackward))
+
         self.slider_video = QSlider(Qt.Horizontal)
         self.slider_video.setRange(0, 0)
-        hbox_video_slider.addWidget(self.btn_play_video)
+        hbox_video_controler.addWidget(self.btn_button_d)
+        hbox_video_controler.addWidget(self.btn_button_b)
+        hbox_video_controler.addWidget(self.btn_play_video)
+        hbox_video_controler.addWidget(self.btn_button_a)
+        hbox_video_controler.addWidget(self.btn_button_c)
+        
+        #hbox_video_controler.addWidget(self.btn_button_e)
         hbox_video_slider.addWidget(self.slider_video)
-        self.btn_play_video_info.setLayout(hbox_video_slider)
+        
+        
+        
+        
+        
+        hbox_presence_bar = QHBoxLayout()
+        self.enable_presence_bar = QPushButton()
+        self.enable_presence_bar.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
+        self.btn_play_video.setEnabled(True)
+        #self.enable_presence_bar.setIcon(self.style().standardIcon(QStyle.SP_DialogOkButton))
+        self.enable_presence_bar.setGeometry(20,20,20,20)
+        self.presence_bar = QPredictionBar(self)
+        self.presence_bar.setFixedHeight(20)
+        self.presence_bar.setRange(0, 0)
+        hbox_presence_bar.addWidget(self.presence_bar)
+
+        hbox_mot_presence_bar = QHBoxLayout()
+        self.mot_presence_bar = QPredictionBar_MOT(self)
+        self.mot_presence_bar.setFixedHeight(20)
+        self.mot_presence_bar.setRange(0, 0)
+        hbox_mot_presence_bar.addWidget(self.mot_presence_bar)
+
+        hbox_pointer_object = QHBoxLayout()
+        self.pointer_object = QBar_PointerObject(self)
+        self.pointer_object.setFixedHeight(10)
+        self.pointer_object.setRange(0, 0)
+        hbox_pointer_object.addWidget(self.pointer_object)
+
+        vbox_group_playvideo = QVBoxLayout()
+        vbox_group_playvideo.addLayout(hbox_video_controler)
+        vbox_group_playvideo.addLayout(hbox_video_slider)
+        vbox_group_playvideo.addLayout(hbox_presence_bar)
+        vbox_group_playvideo.addLayout(hbox_mot_presence_bar)
+        vbox_group_playvideo.addLayout(hbox_pointer_object)
+        self.btn_play_video_info.setLayout(vbox_group_playvideo)
         vbox_option.addWidget(self.btn_play_video_info) 
         
+
         # Notes
         self.btn_add_notes_info = QGroupBox('Notes')
         self.btn_add_notes_info.setFont(self.font_size_header)
@@ -274,6 +330,7 @@ class VideoAppViewer(QWidget):
         add_notes_box.addWidget(self.line_edit_notes)
         self.enter_pressed_notes = False
         self.save_notes_button = QPushButton('Save Notes (Enter)')
+        #self.save_notes_button.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.save_notes_button.setFont(self.font_size)
         self.save_notes_button.clicked.connect(self.save_notes)
         add_notes_box.addWidget(self.save_notes_button)
@@ -288,28 +345,35 @@ class VideoAppViewer(QWidget):
         hbox_jump_records = QHBoxLayout()
         remove_box = QHBoxLayout()
         self.btn_to_back_frame = QPushButton('Previous Frame (B)')
+        #self.btn_to_back_frame.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_to_back_frame.setFont(self.font_size)
         next_and_back_button.addWidget(self.btn_to_back_frame)
         self.btn_to_next_frame = QPushButton('Next Frame (N)')
+        #self.btn_to_next_frame.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_to_next_frame.setFont(self.font_size)
         next_and_back_button.addWidget(self.btn_to_next_frame)
         vbox_option.addLayout(next_and_back_button)
         self.btn_to_change_class = QPushButton('Change Class (C)')
+        #self.btn_to_change_class.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_to_change_class.setFont(self.font_size)
         object_id_push_button.addWidget(self.btn_to_change_class)
         self.btn_to_decrease_id = QPushButton('Decrease Object ID (D)')
+        #self.btn_to_decrease_id.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_to_decrease_id.setFont(self.font_size)
         object_id_push_button.addWidget(self.btn_to_decrease_id)
         self.btn_to_increase_id = QPushButton('Increase Object ID (F)')
+        #self.btn_to_increase_id.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_to_increase_id.setFont(self.font_size)
         object_id_push_button.addWidget(self.btn_to_increase_id)
         vbox_option.addLayout(object_id_push_button)
         vbox_option.addLayout(hbox_jump_records)
         
         self.btn_remove_last_box = QPushButton('Remove Last Box (R)')
+        #self.btn_remove_last_box.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_remove_last_box.setFont(self.font_size)
         remove_box.addWidget(self.btn_remove_last_box)
         self.btn_remove_target_box = QPushButton('Remove Target Box (Delete)')
+        #self.btn_remove_target_box.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_remove_target_box.setFont(self.font_size)
         remove_box.addWidget(self.btn_remove_target_box)
         vbox_option.addLayout(remove_box)
@@ -318,12 +382,61 @@ class VideoAppViewer(QWidget):
         self.checkbox_auto_save.setFont(self.font_size)
         vbox_option.addWidget(self.checkbox_auto_save)
         self.btn_export_records = QPushButton('Export')
+        #self.btn_export_records.setStyleSheet("background-color: rgb(60, 60, 60); color: rgb(200, 200, 200);")
         self.btn_export_records.setFont(self.font_size)
         vbox_option.addWidget(self.btn_export_records)
 
+        # Add Zoom Buttons
+        # Thêm nút cho zoom in và zoom out
+        # self.btn_zoom_in = QPushButton("Zoom In")
+        # self.btn_zoom_out = QPushButton("Zoom Out")
+        # vbox_option.addWidget(self.btn_zoom_in)
+        # vbox_option.addWidget(self.btn_zoom_out)
+        
+        # self.zoom_in_button = QPushButton("zoom-in")
+        # self.zoom_in_button.clicked.connect(self.zoom_in)
+        # vbox_option.addWidget(self.zoom_in_button)
+        
+        # self.zoom_out_button = QPushButton("zoom-reset")
+        # self.zoom_out_button.clicked.connect(self.zoom_reset)
+        # vbox_option.addWidget(self.zoom_out_button)
+
+        # self.zoom_out_button = QPushButton("zoom-out")
+        # self.zoom_out_button.clicked.connect(self.zoom_out)
+        # vbox_option.addWidget(self.zoom_out_button)
+
         # vbox_option/table_preview_record: preview the summary of records
+        
+        # Add QTableWidget to display label and tracking result
+        self.tab_widget = QTabWidget(self)
+        #self.tab_widget.setStyleSheet("QTabWidget::pane { border: 1px solid rgb(250, 250, 250); } QTabBar::tab { width: 100px; height: 20px; background: rgb(60, 60, 60); font-size: 14px; color: rgb(250, 250, 250); border: 0.5px solid rgb(250, 250, 250); }QTabBar::tab:selected {font-weight: bold;}")
+        self.label_tab = QWidget()
+        self.tracking_tab = QWidget()
+        self.tab_widget.addTab(self.label_tab, "Label")
+        self.tab_widget.addTab(self.tracking_tab, "Tracking")
+        # Set layouts for the tabs
+        self.label_layout = QVBoxLayout(self.label_tab)
+        self.tracking_layout = QVBoxLayout(self.tracking_tab)
+
+        self.label_tab.setLayout(self.label_layout)
+        self.tracking_tab.setLayout(self.tracking_layout)
+        vbox_option.addWidget(self.tab_widget)
+        
         self.table_preview_records = self._get_preview_table(self)
-        vbox_option.addWidget(self.table_preview_records)
+        self.table_preview_tracking_records = self._get_preview_table(self)
+        self.label_layout.addWidget(self.table_preview_records)
+        self.tracking_layout.addWidget(self.table_preview_tracking_records)
+        
+        self.cursor_position_label = QLabel(self)
+        self.cursor_position_label.setStyleSheet("background-color: white; corlor: black; border: 0.5px solid black")
+        self.cursor_position_label.resize(170, 20)
+        self.cursor_position_label.move(1140, 0)
+        self.cursor_position_label.setFont(self.font_size)
+        self.setMouseTracking(True) 
+        layout = QVBoxLayout()
+        layout.addWidget(self.cursor_position_label)
+        layout.addStretch()  # Đảm bảo label hiển thị ở cuối cùng của layout
+        self.setLayout(layout)
 
     def save_notes(self):
         notes_text = self.line_edit_notes.text()
@@ -339,6 +452,11 @@ class VideoAppViewer(QWidget):
         # Cập nhật ô Notes trong bảng record
         notes_item = QTableWidgetItem(record['notes'])
         self.table_preview_records.setItem(row, 4, notes_item)
+        
+    def update_tracking_record_preview(self, row, record):
+        # Cập nhật ô Notes trong bảng record
+        notes_item = QTableWidgetItem(record['notes'])
+        self.table_preview_tracking_records.setItem(row, 4, notes_item)
     
     def _get_header_label(self, text: str = ''):
         label = QLabel(text)
@@ -349,6 +467,9 @@ class VideoAppViewer(QWidget):
     
     def _get_preview_table(self, parent):
         table = QTableWidget(parent=parent)
+        #table.setStyleSheet("QScrollBar:vertical { background: rgb(80, 80, 80);width: 15px;} QScrollBar::handle:vertical {background: rgb(110, 110, 110);} QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {background: rgb(110, 110, 110); height: 15px;} QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: rgb(80, 80, 80); }")
+        #table.horizontalHeader().setStyleSheet("QHeaderView::section { background-color: rgb(200, 200, 200); color: rgb(60, 60, 60); }")
+        #table.verticalHeader().setStyleSheet("QHeaderView::section { background-color: rgb(200, 200, 200); color: rgb(60, 60, 60); }")
         table.setColumnCount(7)
         table.setHorizontalHeaderLabels(['Timestamp', 'Frame', 'Class' , 'Object ID', 'Notes' , 'Pt1', 'Pt2'])
         table.setSortingEnabled(False)
@@ -356,7 +477,7 @@ class VideoAppViewer(QWidget):
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
         table.resizeColumnsToContents()
         table.setColumnWidth(2, table.columnWidth(2) + 80)  # Cột 3
-        table.setColumnWidth(4, table.columnWidth(4) + 80)  # Cột 5
+        table.setColumnWidth(4, table.columnWidth(4) + 40)  # Cột 5
         table.setColumnWidth(5, table.columnWidth(5) + 40)  # Cột 6
         table.setColumnWidth(6, table.columnWidth(6) + 40)  # Cột 7
         # Đặt kích thước chữ là 10
@@ -377,8 +498,23 @@ class VideoAppViewer(QWidget):
         self.table_preview_records.setItem(0, 6, QTableWidgetItem(str(pt2)))
         self.table_preview_records.sortByColumn(0, Qt.DescendingOrder)
     
+    def add_record_to_tracking_preview(self, timestamp: str, frame_idx: int, object_class: str, object_id: int, notes_text: str, pt1: tuple, pt2: tuple):
+        self.table_preview_tracking_records.insertRow(0)
+        self.table_preview_tracking_records.setItem(0, 0, QTableWidgetItem(timestamp))
+        self.table_preview_tracking_records.setItem(0, 1, QTableWidgetItem(str(frame_idx)))
+        self.table_preview_tracking_records.setItem(0, 2, QTableWidgetItem(str(object_class)))
+        self.table_preview_tracking_records.setItem(0, 3, QTableWidgetItem(str(object_id)))
+        self.table_preview_tracking_records.setItem(0, 4, QTableWidgetItem(str(notes_text)))
+        self.table_preview_tracking_records.setItem(0, 5, QTableWidgetItem(str(pt1)))
+        self.table_preview_tracking_records.setItem(0, 6, QTableWidgetItem(str(pt2)))
+        self.table_preview_tracking_records.sortByColumn(0, Qt.DescendingOrder)
+    
+    
     def remove_record_from_preview(self, num_rows: int = 1):
             self.table_preview_records.removeRow(0)
+            
+    def remove_record_from_preview(self, num_rows: int = 1):
+            self.table_preview_tracking_records.removeRow(0)
             
     def jump_to_frame(self):
         if not self.enter_pressed:  # Kiểm tra cờ để đảm bảo không nhảy frame nếu đã nhấn Enter
@@ -394,7 +530,8 @@ class VideoAppViewer(QWidget):
             except ValueError:
                 QMessageBox.warning(self, "Invalid Input", "Please enter a valid frame number.")
             self.input_frame_number.setReadOnly(True)
-            
+                   
+
     def eventFilter(self, obj, event):
         if obj == self.input_frame_number:
             if event.type() == QEvent.MouseButtonPress:
@@ -428,7 +565,19 @@ class VideoAppViewer(QWidget):
                 obj.setReadOnly(True)
         return super().eventFilter(obj, event)
     
-    
+    # def zoom_in(self):
+    #     self.label_frame.zoom_in()
+
+    # def zoom_out(self):
+    #     self.label_frame.zoom_out()
+        
+    # def zoom_reset(self):
+    #     self.label_frame.zoom_reset()
+        
+    @property
+    def frame_count(self):
+        return int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT)) if self.cap else None
+       
 # App
 class VideoApp(VideoAppViewer):
     def __init__(self, videopath: str, outpath: str, **config):
@@ -441,8 +590,7 @@ class VideoApp(VideoAppViewer):
             output_path_open.mkdir(parents=True)
         label_output_path_open = output_path_open / '{}_label.csv'.format(video_path_open.stem)
         self.outpath = label_output_path_open
-        
-        
+                
         self.config = config
         self.title = self.config.get('title', 'IGH Annotation Tool')
         self.object_id = 1
@@ -476,6 +624,8 @@ class VideoApp(VideoAppViewer):
         self.label_thickness = label_thickness
         self.limit_nlabel = self.config.get('limit_nlabel', None)
         self.records = []
+        self.tracking_records = []
+        self.pointer_tracking_records = []
 
         # read video
         self.cap = cv2.VideoCapture(self.videopath)
@@ -486,11 +636,26 @@ class VideoApp(VideoAppViewer):
         self.is_force_update = False
         self._update_video_info()
         self._update_frame()
+        self._update_tracking_frame()
+        
+        
+        
+        # self.btn_zoom_in.clicked.connect(self.zoom_in)
+        # self.btn_zoom_out.clicked.connect(self.zoom_out)
+
+        # Thêm phím tắt cho zoom in và zoom out
+        # self.shortcut_zoom_in = QShortcut(QKeySequence("+"), self)
+        # self.shortcut_zoom_in.activated.connect(self.zoom_in)
+        # self.shortcut_zoom_out = QShortcut(QKeySequence("-"), self)
+        # self.shortcut_zoom_out.activated.connect(self.zoom_out)
         
         # widget binding
         self.slider_video.setRange(0, self.frame_count-1)
         self.slider_video.sliderMoved.connect(self.on_slider_moved)
         self.slider_video.sliderReleased.connect(self.on_slider_released)
+        self.presence_bar.setRange(0, self.frame_count-1)   
+        self.mot_presence_bar.setRange(0, self.frame_count-1)     
+        self.pointer_object.setRange(0, self.frame_count-1) 
         self.btn_play_video.clicked.connect(self.on_play_video_clicked)
         self.btn_to_back_frame.clicked.connect(self.to_back_frame)
         self.btn_to_next_frame.clicked.connect(self.to_next_frame)        
@@ -499,72 +664,143 @@ class VideoApp(VideoAppViewer):
         self.btn_to_increase_id.clicked.connect(self.to_increase_object_id)      
         #self.btn_continue.clicked.connect(self.continue_function)
         self.label_frame.mousePressEvent = self.event_frame_mouse_press
-        self.label_frame.mouseMoveEvent = self.event_frame_mouse_move
+        self.label_frame.mouseMoveEvent = self.event_frame_mouse_move_while_pressed
         self.label_frame.mouseReleaseEvent = self.event_frame_mouse_release
         self.btn_export_records.clicked.connect(self.save_file)
         self.btn_remove_last_box.clicked.connect(self.remove_last_box)
         self.btn_remove_target_box.clicked.connect(self.remove_target_record)
         self.table_preview_records.doubleClicked.connect(self.event_preview_double_clicked)
+        self.table_preview_tracking_records.doubleClicked.connect(self.event_preview_tracking_double_clicked)
         self.checkbox_auto_save.stateChanged.connect(self.toggle_auto_save)
+        self.presence_bar.mousePressEvent = self.jump_to_frame_by_presence_bar
+        self.mot_presence_bar.mousePressEvent = self.jump_to_frame_by_mot_presence_bar
+        self.pointer_object.mousePressEvent = self.jump_to_frame_by_pointer_object
+        
+        self.btn_button_d.clicked.connect(self.button_d)
+        self.btn_button_b.clicked.connect(self.button_b)
+        self.btn_button_a.clicked.connect(self.button_a)
+        self.btn_button_c.clicked.connect(self.button_c)
         self.showMaximized()
+        # self.setStyleSheet('''
+        #     background-color: rgb(27,27,27);
+        #     color: rgb(204,204,204);
+        # ''')
+
+    def copy_selected_row(self, source_table, dest_table):
+        selected_rows = source_table.selectionModel().selectedRows()
+        for row in selected_rows:
+            dest_table.insertRow(dest_table.rowCount())
+            for column in range(source_table.columnCount()):
+                dest_table.setItem(dest_table.rowCount() - 1, column, QTableWidgetItem(source_table.item(row.row(), column).text()))
+
+    def copy_all_rows(self, source_table, dest_table):
+        dest_table.setRowCount(source_table.rowCount())
+        dest_table.setColumnCount(source_table.columnCount())
+        for row in range(source_table.rowCount()):
+            for column in range(source_table.columnCount()):
+                item = source_table.item(row, column)
+                if item is not None:
+                    dest_table.setItem(row, column, QTableWidgetItem(item.text()))
+    @pyqtSlot() 
+    def button_c(self):
+        self.target_frame_idx = min(self.target_frame_idx+50, self.frame_count-1)
+        
+    @pyqtSlot() 
+    def button_a(self):
+        self.target_frame_idx = min(self.target_frame_idx+10, self.frame_count-1)
+    @pyqtSlot() 
+    def button_b(self):
+        self.target_frame_idx = max(0, self.target_frame_idx-10)
+    @pyqtSlot() 
+    def button_d(self):
+        self.target_frame_idx = max(0, self.target_frame_idx-50) 
+
+
+    def jump_to_frame_by_presence_bar(self, event):        
+        if event.button() == Qt.LeftButton:
+            pos = event.pos()
+            adjusted_x = pos.x()
+            #self.clicked.emit(pos)
+            target_frame = self.presence_bar._pixelPosToFrame(adjusted_x)
+            #print(target_frame)
+            try:
+                frame_number = target_frame
+                    # Tự đảm bảo rằng frame_number nằm trong phạm vi hợp lệ
+                if 0 <= frame_number < self.frame_count:
+                    self.target_frame_idx = frame_number
+                        # self.input_frame_number.clear()
+                else:
+                    QMessageBox.warning(self, "Invalid Frame Number", "Please enter a valid frame number.")
+            except ValueError:
+                    QMessageBox.warning(self, "Invalid Input", "Please enter a valid frame number.")
+
+    def jump_to_frame_by_mot_presence_bar(self, event):        
+        if event.button() == Qt.LeftButton:
+            pos = event.pos()
+            adjusted_x = pos.x()
+            #self.clicked.emit(pos)
+            target_frame = self.mot_presence_bar._pixelPosToFrame(adjusted_x)
+            #print(target_frame)
+            try:
+                frame_number = target_frame
+                    # Tự đảm bảo rằng frame_number nằm trong phạm vi hợp lệ
+                if 0 <= frame_number < self.frame_count:
+                    self.target_frame_idx = frame_number
+                        # self.input_frame_number.clear()
+                else:
+                    QMessageBox.warning(self, "Invalid Frame Number", "Please enter a valid frame number.")
+            except ValueError:
+                    QMessageBox.warning(self, "Invalid Input", "Please enter a valid frame number.")
+                    
+    def jump_to_frame_by_pointer_object(self, event):        
+        if event.button() == Qt.LeftButton:
+            pos = event.pos()
+            adjusted_x = pos.x()
+            #self.clicked.emit(pos)
+            target_frame = self.pointer_object._pixelPosToFrame(adjusted_x)
+            #print(target_frame)
+            try:
+                frame_number = target_frame
+                    # Tự đảm bảo rằng frame_number nằm trong phạm vi hợp lệ
+                if 0 <= frame_number < self.frame_count:
+                    self.target_frame_idx = frame_number
+                        # self.input_frame_number.clear()
+                else:
+                    QMessageBox.warning(self, "Invalid Frame Number", "Please enter a valid frame number.")
+            except ValueError:
+                    QMessageBox.warning(self, "Invalid Input", "Please enter a valid frame number.")
     
     def init_menu_bar(self):
         # Tạo menu bar
         menubar = QMenuBar(self)
-        menubar.setGeometry(0, 0, 34, 20)
+        menubar.setGeometry(0, 0, 92, 20)
         # Tạo menu "File"
         file_menu = menubar.addMenu('File')
         # Tạo action "Open File" và gán sự kiện
         open_action = QAction('&Open File (MP4)', self)
-        open_action.setShortcut('Ctrl+O')
+        #open_action.setShortcut('Ctrl+O')
         open_action.triggered.connect(self.open_video_file)
         file_menu.addAction(open_action)
         # Tạo action "Import File" và gán sự kiện
-        import_action = QAction('&Import File (CSV)', self)
+        import_action = QAction('&Import Label File (CSV)', self)
         import_action.triggered.connect(self.import_csv_file)
         file_menu.addAction(import_action)
+        # Tạo action "Import File" và gán sự kiện
+        import_action = QAction('&Import Tracking Result File (CSV)', self)
+        import_action.triggered.connect(self.import_tracking_csv_file)
+        file_menu.addAction(import_action)
+        
+        
+        # Tạo menu "Settings"
+        file_menu = menubar.addMenu('System')
+        setting_action = QAction('&Change Classes', self)
+        setting_action.triggered.connect(self.change_class)
+        file_menu.addAction(setting_action)
         # Tạo action "Reload" và gán sự kiện
         reload_action = QAction('&Reload', self)
         reload_action.triggered.connect(self.reload_app)
         file_menu.addAction(reload_action)
-        
-        # # Tạo menu "Settings"
-        # file_menu = menubar.addMenu('Setting')
-        # setting_action = QAction('&Change Classes', self)
-        # setting_action.triggered.connect(self.change_class)
-        # file_menu.addAction(setting_action)
-    
-    def change_class(self):
-        dialog = QWidget()
-        layout = QVBoxLayout()
-        text_edit = QTextEdit()
-        layout.addWidget(text_edit)
-        # Tạo nút OK
-        ok_button = QPushButton("OK")
-        #ok_button.clicked.connect(lambda: self.update_classes(text_edit.toPlainText()))
-        layout.addWidget(ok_button)
-        dialog.setLayout(layout)
-        dialog.setWindowTitle("Change Classes")
-        dialog.exec_()
 
-    def update_classes(self, new_classes):
-        try:
-            # Đọc tệp config.yaml
-            with open(CONFIG_FILE, 'r') as file:
-                config_data = yaml.safe_load(file)
-
-            # Cập nhật danh sách lớp
-            config_data['classes'] = [class_name.strip() for class_name in new_classes.split('\n')]
-
-            # Ghi lại vào tệp config.yaml
-            with open(CONFIG_FILE, 'w') as file:
-                yaml.dump(config_data, file)
-
-            # Yêu cầu restart app
-            QMessageBox.information(self, "Success", "Classes updated successfully. Please restart the app.")
-
-        except Exception as e:
-            QMessageBox.warning(self, "Error", f"An error occurred: {str(e)}")
             
     def open_video_file(self):
         file_path_open = get_video_file()
@@ -585,9 +821,14 @@ class VideoApp(VideoAppViewer):
                 # Xoá dữ liệu trong records
                 if self.records:
                     self.remove_all_records_from_preview()
+                    self.remove_all_tracking_records_from_preview()
                     self.records = []
                     self.is_force_update = True
-                    
+                if self.tracking_records:
+                    self.remove_all_tracking_records_from_preview()
+                    self.tracking_records = []
+                    self.pointer_tracking_records = []
+                    self.is_force_update = True   
                 # Đặt lại các thông số liên quan đến video
                 #self.videopath = file_path_open
                 video_path_open = Path(self.videopath)
@@ -602,19 +843,39 @@ class VideoApp(VideoAppViewer):
                 self.scale_height = self.scale_width = None
                 self.is_playing_video = False
                 self.is_force_update = False
+                self.slider_video.setRange(0, self.frame_count-1)
+                self.presence_bar.setRange(0, self.frame_count-1)
+                self.mot_presence_bar.setRange(0, self.frame_count-1)
+                self.pointer_object.setRange(0, self.frame_count-1)
                 self._update_video_info()
+                self.update_presence_bar()
+                self.update_mot_presence_bar()
+                self.update_pointer_object()
                 self._update_frame()
-            
-            #self._update_video_info()
+                self._update_tracking_frame()
         return self.videopath
         #pass
     
     def import_csv_file(self):
         options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Import CSV File", "", "CSV Files (*.csv)", options=options)
+        file_path, _ = QFileDialog.getOpenFileName(self, "Import Label CSV File", "", "Label CSV Files (*.csv)", options=options)
         if file_path:
             self.read_csv_file(file_path)
             
+    def import_tracking_csv_file(self):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getOpenFileName(self, "Import Tracking Result CSV File", "", "Tracking Result CSV Files (*.csv)", options=options)
+        if file_path:
+            self.read_tracking_csv_file(file_path)
+            #self.read_pointer_csv_file(file_path)
+
+    def change_class(self):
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getOpenFileName(self, "Import pointer Tracking Result CSV File", "", "Tracking Result CSV Files (*.csv)", options=options)
+        if file_path:
+            #self.read_tracking_csv_file(file_path)
+            self.read_pointer_csv_file(file_path)
+    
     def read_csv_file(self, file_path):
         self.remove_all_records_from_preview()
         try:
@@ -656,15 +917,198 @@ class VideoApp(VideoAppViewer):
                 
             # Hiển thị thông tin về số lượng bản ghi đã được import
             QMessageBox.about(self, 'Info', 'Imported {} records from CSV file.'.format(len(self.records)))
-            self.redraw_boxes_on_frame()
+            #self.redraw_boxes_on_frame()
+            self.redraw_combined_boxes_on_frame()
+            self.update_presence_bar()
+            #self.update_mot_presence_bar()
             self.render_frame_idx = max(record['frame_idx'] for record in self.records)
         except Exception as e:
             QMessageBox.critical(self, 'Error', 'Error occurred while importing CSV file: {}'.format(str(e)))
 
-    
+
+    # def read_tracking_csv_file(self, file_path):
+    #     self.remove_all_tracking_records_from_preview()
+    #     try:
+    #         df = pd.read_csv(file_path)
+    #         # Xử lý dữ liệu đọc được từ file CSV và cập nhật vào danh sách self.records
+    #         self.tracking_records = []  # Đảm bảo rằng danh sách self.tracking_records trống trước khi cập nhật dữ liệu mới
+    #         new_tracking_records = []
+    #         for index, row in df.iterrows():
+    #             notes_value = row['notes'] if pd.notna(row['notes']) else ''
+    #             record = OrderedDict([
+    #                     ('timestamp_hms', row['timestamp_hms']),
+    #                     ('timestamp_hmsf', row['timestamp_hmsf']),
+    #                     ('frame_idx', row['frame_idx']), ('fps', row['fps']),
+    #                     ('object_cls', row['object_cls']), ('object_cls', row['object_cls']),
+    #                     ('object_idx', row['object_idx']), ('object_id', row['object_id']),
+    #                     ('notes', notes_value),
+    #                     ('frame_height', row['frame_height']), ('frame_width', row['frame_width']),
+    #                     ('scale_height', row['scale_height']), ('scale_width', row['scale_width']),
+    #                     ('x1', row['x1']), ('y1', row['y1']), ('x2', row['x2']), ('y2', row['y2']),
+    #                     ('center_x', row['center_x']), ('center_y', row['center_y'])
+    #                     ])#('pt1', row['pt1']), ('pt2', row['pt2']),
+    #             if not self._is_duplicate_track(record):
+    #                 new_tracking_records.append(record)
+    #             self.tracking_records.extend(new_tracking_records)  # Thêm các bản ghi mới vào danh sách tồn tại
+    #             self._update_tracking_records()
+    #             if not record['notes']:
+    #                 record['notes'] = ''
+    #             self.add_record_to_tracking_preview(record['timestamp_hms'], \
+    #                                             record['frame_idx'], \
+    #                                             record['object_cls'], \
+    #                                             record['object_id'], \
+    #                                             (record['notes']), \
+    #                                             (record['x1'], record['y1']), \
+    #                                             (record['x2'], record['y2'])) \
+    #                                             #(record['pt1']), \
+    #                                             #(record['pt2']))
+    #             self.is_force_update = True
+    #             self.update()  # Cập nhật giao diện để hiển thị box cuối cùng
+                
+    #         # Hiển thị thông tin về số lượng bản ghi đã được import
+    #         QMessageBox.about(self, 'Info', 'Imported {} records from Traking result CSV file.'.format(len(self.tracking_records)))
+    #         #self.redraw_tracking_boxes_on_frame()
+    #         self.redraw_combined_boxes_on_frame()
+    #         self.update_mot_presence_bar()
+    #         self.render_frame_idx = max(record['frame_idx'] for record in self.tracking_records)
+    #     except Exception as e:
+    #         QMessageBox.critical(self, 'Error', 'Error occurred while importing Tracking result CSV file: {}'.format(str(e)))
+              
+    def read_tracking_csv_file(self, file_path):
+        self.remove_all_tracking_records_from_preview()
+        try:
+            df = pd.read_csv(file_path)
+            # Xử lý dữ liệu đọc được từ file CSV và cập nhật vào danh sách self.records
+            self.tracking_records = []  # Đảm bảo rằng danh sách self.tracking_records trống trước khi cập nhật dữ liệu mới
+            new_tracking_records = []
+            self.pointer_tracking_records = []  # Đảm bảo danh sách self.tracking_records trống trước khi cập nhật dữ liệu mới
+            new_pointer_tracking_records = []
+            seen_object_cls_ids = {}
+            for index, row in df.iterrows():
+                notes_value = row['notes'] if pd.notna(row['notes']) else ''
+                record = OrderedDict([
+                        ('timestamp_hms', row['timestamp_hms']),
+                        ('timestamp_hmsf', row['timestamp_hmsf']),
+                        ('frame_idx', row['frame_idx']), ('fps', row['fps']),
+                        ('object_cls', row['object_cls']), ('object_cls', row['object_cls']),
+                        ('object_idx', row['object_idx']), ('object_id', row['object_id']),
+                        ('notes', notes_value),
+                        ('frame_height', row['frame_height']), ('frame_width', row['frame_width']),
+                        ('scale_height', row['scale_height']), ('scale_width', row['scale_width']),
+                        ('x1', row['x1']), ('y1', row['y1']), ('x2', row['x2']), ('y2', row['y2']),
+                        ('center_x', row['center_x']), ('center_y', row['center_y'])
+                        ])#('pt1', row['pt1']), ('pt2', row['pt2']),
+                
+                
+                object_cls = row['object_cls']
+                object_id = row['object_id']
+
+                # Kiểm tra nếu object_cls đã có trong seen_object_cls_ids
+                if object_cls not in seen_object_cls_ids:
+                    seen_object_cls_ids[object_cls] = set()
+
+                # Kiểm tra nếu object_id đã có trong seen_object_cls_ids[object_cls]
+                if object_id not in seen_object_cls_ids[object_cls]:
+                    if not self._is_duplicate_track(record):
+                        new_pointer_tracking_records.append(record)
+                    seen_object_cls_ids[object_cls].add(object_id)
+
+            
+                if not self._is_duplicate_track(record):
+                    new_tracking_records.append(record)
+                self.tracking_records.extend(new_tracking_records)  # Thêm các bản ghi mới vào danh sách tồn tại
+                self._update_tracking_records()
+                if not record['notes']:
+                    record['notes'] = ''
+                self.add_record_to_tracking_preview(record['timestamp_hms'], \
+                                                record['frame_idx'], \
+                                                record['object_cls'], \
+                                                record['object_id'], \
+                                                (record['notes']), \
+                                                (record['x1'], record['y1']), \
+                                                (record['x2'], record['y2'])) \
+                                                #(record['pt1']), \
+                                                #(record['pt2']))
+                self.is_force_update = True
+                self.update()  # Cập nhật giao diện để hiển thị box cuối cùng
+                
+            # Hiển thị thông tin về số lượng bản ghi đã được import
+            QMessageBox.about(self, 'Info', 'Imported {} records from Traking result CSV file.'.format(len(self.tracking_records)))
+            #self.redraw_tracking_boxes_on_frame()
+            self.redraw_combined_boxes_on_frame()
+            self.update_mot_presence_bar()
+            self.pointer_tracking_records.extend(new_pointer_tracking_records)  # Thêm các bản ghi mới vào danh sách tồn tại
+            self._update_pointer_tracking_records()
+            self.update_pointer_object()
+            self.render_frame_idx = max(record['frame_idx'] for record in self.tracking_records)
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', 'Error occurred while importing Tracking result CSV file: {}'.format(str(e)))
+      
+    # def read_pointer_csv_file(self, file_path):
+    #     try:
+    #         df = pd.read_csv(file_path)
+    #         self.pointer_tracking_records = []  # Đảm bảo danh sách self.tracking_records trống trước khi cập nhật dữ liệu mới
+    #         new_pointer_tracking_records = []
+    #         seen_object_cls_ids = {}
+
+    #         for index, row in df.iterrows():
+    #             notes_value = row['notes'] if pd.notna(row['notes']) else ''
+    #             record = OrderedDict([
+    #                 ('timestamp_hms', row['timestamp_hms']),
+    #                 ('timestamp_hmsf', row['timestamp_hmsf']),
+    #                 ('frame_idx', row['frame_idx']), 
+    #                 ('fps', row['fps']),
+    #                 ('object_cls', row['object_cls']), 
+    #                 ('object_idx', row['object_idx']),
+    #                 ('object_id', row['object_id']),
+    #                 ('notes', notes_value),
+    #                 ('frame_height', row['frame_height']), 
+    #                 ('frame_width', row['frame_width']),
+    #                 ('scale_height', row['scale_height']), 
+    #                 ('scale_width', row['scale_width']),
+    #                 ('x1', row['x1']), 
+    #                 ('y1', row['y1']), 
+    #                 ('x2', row['x2']), 
+    #                 ('y2', row['y2']),
+    #                 ('center_x', row['center_x']), 
+    #                 ('center_y', row['center_y'])
+    #             ])
+                
+    #             object_cls = row['object_cls']
+    #             object_id = row['object_id']
+
+    #             # Kiểm tra nếu object_cls đã có trong seen_object_cls_ids
+    #             if object_cls not in seen_object_cls_ids:
+    #                 seen_object_cls_ids[object_cls] = set()
+
+    #             # Kiểm tra nếu object_id đã có trong seen_object_cls_ids[object_cls]
+    #             if object_id not in seen_object_cls_ids[object_cls]:
+    #                 if not self._is_duplicate_track(record):
+    #                     new_pointer_tracking_records.append(record)
+    #                 seen_object_cls_ids[object_cls].add(object_id)
+
+    #         self.pointer_tracking_records.extend(new_pointer_tracking_records)  # Thêm các bản ghi mới vào danh sách tồn tại
+    #         self._update_pointer_tracking_records()
+            
+    #         # Hiển thị thông tin về số lượng bản ghi đã được import
+    #         QMessageBox.about(self, 'Info', 'Imported {} records from Tracking result CSV file.'.format(len(self.pointer_tracking_records)))
+    #         self.update_pointer_object()
+    #         self.render_frame_idx = max(record['frame_idx'] for record in self.pointer_tracking_records)
+            
+    #     except Exception as e:
+    #         QMessageBox.critical(self, 'Error', 'Error occurred while importing Pointer Tracking result CSV file: {}'.format(str(e)))
+
+
+                
     def _is_duplicate(self, new_record):
         for record in self.records:
             if record == new_record:
+                return True
+        return False
+    
+    def _is_duplicate_track(self, new_tracking_record):
+        for record in self.tracking_records:
+            if record == new_tracking_record:
                 return True
         return False
 
@@ -678,6 +1122,52 @@ class VideoApp(VideoAppViewer):
                 seen.add(record_tuple)
         self.records = unique_records
     
+    def _update_tracking_records(self):
+        seen = set()
+        unique_records = []
+        for record in self.tracking_records:
+            record_tuple = tuple(record.items())
+            if record_tuple not in seen:
+                unique_records.append(record)
+                seen.add(record_tuple)
+        self.tracking_records = unique_records
+        
+    def _update_pointer_tracking_records(self):
+        seen = set()
+        unique_records = []
+        for record in self.pointer_tracking_records:
+            record_tuple = tuple(record.items())
+            if record_tuple not in seen:
+                unique_records.append(record)
+                seen.add(record_tuple)
+        self.pointer_tracking_records = unique_records
+        
+    def redraw_combined_boxes_on_frame(self):
+        frame = self._read_frame(self.render_frame_idx)
+        if frame is not None:
+            # Vẽ box từ file CSV bình thường
+            filtered_records = [record for record in self.records if record['frame_idx'] == self.render_frame_idx]
+            for record in filtered_records:
+                pt1 = (record['x1'], record['y1'])
+                pt2 = (record['x2'], record['y2'])
+                class_label = record['object_cls']
+                cv2.rectangle(frame, pt1, pt2, (0, 0, 255), 2)  # Red color with thicker line
+                text = f"{class_label} | ID: {record['object_id']} | {pt1}, {pt2}"
+                cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
+            
+            # Vẽ box từ file CSV tracking
+            filtered_tracking_records = [record for record in self.tracking_records if record['frame_idx'] == self.render_frame_idx]
+            for record in filtered_tracking_records:
+                pt1 = (record['x1'], record['y1'])
+                pt2 = (record['x2'], record['y2'])
+                class_label = record['object_cls']
+                cv2.rectangle(frame, pt1, pt2, (255, 0, 0), 2)  # Blue color with thicker line
+                text = f"{class_label} | ID: {record['object_id']} | {pt1}, {pt2}"
+                cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 208, 23), 2, cv2.LINE_AA)
+            
+            pixmap = QPixmap(self._ndarray_to_qimage(frame))
+            self.label_frame.setPixmap(pixmap)
+        
     def redraw_boxes_on_frame(self):
         frame = self._read_frame(self.render_frame_idx)
         if frame is not None:
@@ -689,6 +1179,21 @@ class VideoApp(VideoAppViewer):
                 cv2.rectangle(frame, pt1, pt2, self.label_color, self.label_thickness)
                 text = f"{class_label} | ID: {record['object_id']} | {pt1}, {pt2}"
                 cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 1, cv2.LINE_AA)
+            pixmap = QPixmap(self._ndarray_to_qimage(frame))
+            self.label_frame.setPixmap(pixmap)
+            
+    def redraw_tracking_boxes_on_frame(self):
+        frame = self._read_tracking_frame(self.render_frame_idx)
+        if frame is not None:
+            filtered_records = [record for record in self.tracking_records if record['frame_idx'] == self.render_frame_idx]
+            for record in filtered_records:
+                pt1 =(record['x1'], record['y1'])
+                pt2 = (record['x2'], record['y2'])
+                class_label = record['object_cls']
+                cv2.rectangle(frame, pt1, pt2, (255, 0, 0), self.label_thickness)
+                text = f"{class_label} | ID: {record['object_id']} | {pt1}, {pt2}"
+                cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv2.LINE_AA)
+                print(self.label_color)
             pixmap = QPixmap(self._ndarray_to_qimage(frame))
             self.label_frame.setPixmap(pixmap)
     
@@ -750,6 +1255,25 @@ class VideoApp(VideoAppViewer):
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 return frame
             self.logger.exception('read #%d frame failed', frame_idx)
+            
+    def _read_tracking_frame(self, frame_idx: int):
+        """check frame idx and read frame status than return frame
+        Arguments:
+            frame_idx {int} -- frame index
+
+        Returns:
+            {np.ndarray} -- RGB image in (h, w, c)
+        """
+        if frame_idx >= self.frame_count:
+            self.logger.exception('frame index %d should be less than %d', frame_idx, self.frame_count)
+        else:
+            self.target_frame_idx = frame_idx
+            self.cap.set(1, frame_idx)
+            read_success, frame = self.cap.read()
+            if read_success:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                return frame
+            self.logger.exception('read #%d frame failed', frame_idx)
 
     def _play_video(self):
         """play video when button clicked"""
@@ -776,7 +1300,6 @@ class VideoApp(VideoAppViewer):
     def _update_autosave_info(self):
         self.label_output_path.setText(str(self.outpath))
 
-
     def _update_frame(self):
         """read and update image to label"""
         if self.target_frame_idx != self.render_frame_idx or self.is_force_update:
@@ -785,7 +1308,8 @@ class VideoApp(VideoAppViewer):
             frame = self._read_frame(self.target_frame_idx)
             if frame is not None:
                 # draw, convert, resize pixmap
-                frame = self.draw_rects(self.target_frame_idx, frame)
+                #frame = self.draw_rects(self.target_frame_idx, frame)
+                frame = self.draw_combined_rects(self.target_frame_idx, frame)
                 pixmap = QPixmap(self._ndarray_to_qimage(frame))
                 self.scale_width = int(min(pixmap.width(), self.screen.width()*1))
                 self.scale_height = int(pixmap.height() * (self.scale_width / pixmap.width()))
@@ -797,11 +1321,35 @@ class VideoApp(VideoAppViewer):
                 self._update_frame_status(self.target_frame_idx)
                 self.render_frame_idx = self.target_frame_idx
                 self.slider_video.setValue(self.render_frame_idx)
+                #self.presence_bar.setValue(self.render_frame_idx)
         wait_time = int(1000/self.video_fps)
         QTimer.singleShot(wait_time, self._update_frame)
+        #print('update frame')
+        #self.update_box_presence_bar()
+        
+    def _update_tracking_frame(self):
+        """read and update image to label"""
+        # if self.target_frame_idx != self.render_frame_idx or self.is_force_update:
+        #     self.is_force_update = False
+            
+        frame = self._read_tracking_frame(self.target_frame_idx)
+        if frame is not None:
+                # draw, convert, resize pixmap
+                frame = self.draw_combined_rects(self.target_frame_idx, frame)
+        wait_time = int(1000/self.video_fps)
+        QTimer.singleShot(wait_time, self._update_tracking_frame)
+        #print('update tracking frame')
+        #self.update_box_presence_bar()
         
     def _update_frame_status(self, frame_idx: int, err: str = ''):
-        msg = '             #Frame ({}/{})             '.format(frame_idx, self.frame_count-1)
+        msg = '#Frame ({}/{})'.format(frame_idx, self.frame_count-1)
+        if err:
+            msg += '\n{}'.format(err)
+        self.label_video_status.setFont(self.font_size_header)
+        self.label_video_status.setText(msg)
+        
+    def _update_tracking_frame_status(self, frame_idx: int, err: str = ''):
+        msg = '#Frame ({}/{})'.format(frame_idx, self.frame_count-1)
         if err:
             msg += '\n{}'.format(err)
         self.label_video_status.setFont(self.font_size_header)
@@ -811,6 +1359,11 @@ class VideoApp(VideoAppViewer):
         """return specfic records by frame index (default: current frame)"""
         frame_idx = frame_idx or self.render_frame_idx
         return list(filter(lambda x: x['frame_idx'] == frame_idx, self.records))
+    
+    def _get_tracking_records_by_frame_idx(self, frame_idx=None):
+        """return specfic records by frame index (default: current frame)"""
+        frame_idx = frame_idx or self.render_frame_idx
+        return list(filter(lambda x: x['frame_idx'] == frame_idx, self.tracking_records))
 
     def _get_nrecord_in_current_frame(self):
         """get the number of records in current frame"""
@@ -869,6 +1422,16 @@ class VideoApp(VideoAppViewer):
         self._update_frame_status(frame_idx=self.slider_video.value())
         
     @pyqtSlot()
+    def on_presence_released(self):
+        """update frame and frame status when the slider released"""
+        self.target_frame_idx = self.presence_bar.value()
+
+    @pyqtSlot()
+    def on_presence_moved(self):
+        """update frame status only when the slider moved"""
+        self._update_frame_status(frame_idx=self.presence_bar.value())  
+        
+    @pyqtSlot()
     def on_play_video_clicked(self):
         """control to play or pause the video"""
         self.is_playing_video = not self.is_playing_video
@@ -910,7 +1473,9 @@ class VideoApp(VideoAppViewer):
                 # Nếu không hiển thị hộp thoại, thực hiện hành động mà không cần xác nhận từ người dùng
                 last_record = self.records.pop()
                 self.remove_record_from_preview(last_record['frame_idx'])
-                self.is_force_update = True
+                self.is_force_update = True                
+                self.update_presence_bar()
+                #self.update_mot_presence_bar()
                 self._update_frame()
                 self.update()
                 
@@ -927,7 +1492,11 @@ class VideoApp(VideoAppViewer):
                 QMessageBox.warning(self, "Error", f"An error occurred")
 
     @pyqtSlot()
-    def event_frame_mouse_move(self, event):
+    def event_frame_mouse_move_while_pressed(self, event):
+        cursor_pos = event.pos()
+        #Cập nhật vị trí hiển thị của label toạ độ
+        self.cursor_position_label.setStyleSheet("background-color: rgb(255, 255, 255); color: rgb(0, 0, 0); border: 1px solid rgb(0, 0, 0);")
+        self.cursor_position_label.setText(f'  x: {cursor_pos.x()}, y: {cursor_pos.y()}')
         if self.label_frame.pt1:  # Nếu đã có điểm bắt đầu, tức là đang trong quá trình vẽ box
             frame = self._read_frame(self.target_frame_idx)  # Đọc frame từ video
             if frame is not None:
@@ -986,6 +1555,13 @@ class VideoApp(VideoAppViewer):
         if row >= 0:
             frame_idx = int(self.table_preview_records.item(row, 1).text())
             self.target_frame_idx = frame_idx
+            
+    @pyqtSlot()
+    def event_preview_tracking_double_clicked(self):
+        row = self.table_preview_tracking_records.currentRow()
+        if row >= 0:
+            frame_idx = int(self.table_preview_tracking_records.item(row, 1).text())
+            self.target_frame_idx = frame_idx
         
     @pyqtSlot()    
     def remove_target_record(self):
@@ -1035,10 +1611,64 @@ class VideoApp(VideoAppViewer):
                         self.table_preview_records.removeRow(selected_row)
                         #target_record = None
                         self.is_force_update = True
+                        self.update_presence_bar()
+                        #self.update_mot_presence_bar()
                         self._update_frame()
                         self.update()                    
                     
-                
+    @pyqtSlot()    
+    def remove_target_tracking_record(self):
+        selected_row = self.table_preview_tracking_records.currentRow()
+        if selected_row >= 0:
+            frame_idx = int(self.table_preview_tracking_records.item(selected_row, 1).text())
+            #target_record_idx = (record for record in self.records if record['frame_idx'] == frame_idx)
+            pt1_coord = self.table_preview_tracking_records.item(selected_row, 5).text()
+            pt2_coord = self.table_preview_tracking_records.item(selected_row, 6).text()
+            target_record = None
+            
+            if self.records:
+                if self.show_message_box_target:
+                    for record in self.records:
+                        if record['frame_idx'] == frame_idx and (record['x1'], record['y1']) == eval(pt1_coord) and (record['x2'], record['y2']) == eval(pt2_coord):
+                            #print((record['pt1']))
+                            target_record = record
+                            break
+                    if target_record:
+                        message_box = QMessageBox()
+                        message_box.setWindowTitle("Remove Target Box Confirmation")
+                        message_box.setText("Do you want to remove the target box at {}, {}?".format(pt1_coord,pt2_coord))
+                        message_box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Ok)
+                        message_box.setDefaultButton(QMessageBox.Cancel)
+                        dont_ask_again_checkbox = QCheckBox("Don't ask again")
+                        message_box.setCheckBox(dont_ask_again_checkbox)
+                        choice = message_box.exec_()
+                        if choice == QMessageBox.Ok:
+                            self.records.remove(target_record)
+                            self.table_preview_tracking_records.removeRow(selected_row)
+                            #target_record = None
+                            self.is_force_update = True
+                            self._update_tracking_frame()
+                            self.update()
+                            
+                        if dont_ask_again_checkbox.isChecked():
+                            self.show_message_box_target = False
+                    else:
+                        QMessageBox.warning(self, "Error", "Target record not found!")
+                else:
+                    for record in self.records:
+                        if record['frame_idx'] == frame_idx and (record['x1'], record['y1']) == eval(pt1_coord) and (record['x2'], record['y2']) == eval(pt2_coord):
+                            target_record = record
+                            break
+                    if target_record:
+                        self.records.remove(target_record)
+                        self.table_preview_tracking_records.removeRow(selected_row)
+                        #target_record = None
+                        self.is_force_update = True
+                        #self.update_presence_bar()
+                        self.update_mot_presence_bar()
+                        self._update_tracking_frame()
+                        self.update()
+                                    
     @pyqtSlot()  
     def contextMenuEvent(self, event):
         menu = QMenu(self)
@@ -1057,7 +1687,92 @@ class VideoApp(VideoAppViewer):
             cv2.rectangle(frame, pt1, pt2, self.label_color, self.label_thickness)
             text = f"{record['object_cls']} | ID: {record['object_id']} | {pt1}, {pt2}"
             cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 1, cv2.LINE_AA)
-        return frame  
+            print('draw rect')
+        self.update_presence_bar()
+        return frame 
+    
+    def draw_tracking_rects(self, frame_idx: int, frame: np.ndarray):
+        rest_records = list(filter(lambda x: x['frame_idx'] == frame_idx, self.tracking_records))
+        if not rest_records:
+            return frame
+        for record in rest_records:
+            pt1, pt2 = (record['x1'], record['y1']), (record['x2'], record['y2'])
+            cv2.rectangle(frame, pt1, pt2, (255, 208, 23), self.label_thickness)
+            text = f"{record['object_cls']} | ID: {record['object_id']} | {pt1}, {pt2}"
+            cv2.putText(frame, text, (pt1[0], pt1[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 208, 23), 1, cv2.LINE_AA)
+            print('draw track')
+        self.update_mot_presence_bar()
+        return frame 
+    
+
+    def draw_combined_rects(self, frame_idx, frame):
+        filtered_records = [record for record in self.records if record['frame_idx'] == frame_idx]
+        for record in filtered_records:
+            pt1 = (record['x1'], record['y1'])
+            pt2 = (record['x2'], record['y2'])
+            class_label = record['object_cls']
+            color = (0, 0, 255)  # Red color
+            text = f"{class_label} | ID: {record['object_id']} | {pt1}, {pt2}"
+            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
+
+            # Determine the position for the text background
+            text_x = min(pt1[0], pt2[0])
+            text_y = min(pt1[1], pt2[1]) - 5
+            if text_y < 20:
+                text_y = min(pt1[1], pt2[1]) + text_size[1] + 5
+            
+            # Draw the rectangle (background for text)
+            cv2.rectangle(frame, (text_x-2, text_y - text_size[1] - 5), (text_x + text_size[0], text_y + 5), color, cv2.FILLED)
+            # Draw the rectangle around the object
+            cv2.rectangle(frame, pt1, pt2, color, self.label_thickness)
+            # Draw the text
+            cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+
+        filtered_tracking_records = [record for record in self.tracking_records if record['frame_idx'] == frame_idx]
+        for record in filtered_tracking_records:
+            pt1 = (record['x1'], record['y1'])
+            pt2 = (record['x2'], record['y2'])
+            class_label = record['object_cls']
+            color = (255, 208, 23)  # Blue color
+            text = f"{class_label} | ID: {record['object_id']} | {pt1}, {pt2} | Tracking"
+            text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 1)[0]
+
+            # Determine the position for the text background
+            text_x = min(pt1[0], pt2[0])
+            text_y = min(pt1[1], pt2[1]) - 5
+            if text_y < 20:
+                text_y = min(pt1[1], pt2[1]) + text_size[1] + 5
+            
+            # Draw the rectangle (background for text)
+            cv2.rectangle(frame, (text_x-2, text_y - text_size[1] - 5), (text_x + text_size[0], text_y + 5), color, cv2.FILLED)
+            # Draw the rectangle around the object
+            cv2.rectangle(frame, pt1, pt2, color, self.label_thickness)
+            # Draw the text
+            cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+
+        self.update_presence_bar()
+        return frame
+
+    def update_presence_bar(self):
+        """Update the presence bar to reflect frames with annotations."""
+        annotations = {record['frame_idx']: [2] for record in self.records}
+        self.presence_bar.setAnnotations(annotations)
+        self.presence_bar.redraw()
+        #print('update_presence_bar')
+    
+        
+    def update_mot_presence_bar(self):
+        """Update the presence bar to reflect frames with annotations."""
+        annotations = {record['frame_idx']: [1] for record in self.tracking_records}
+        self.mot_presence_bar.setAnnotations(annotations)
+        self.mot_presence_bar.redraw()
+        #print('update_mot_presence_bar')
+        
+    def update_pointer_object(self):
+        """Update the presence bar to reflect frames with annotations."""
+        annotations = {record['frame_idx']: [1] for record in self.pointer_tracking_records}
+        self.pointer_object.setAnnotations(annotations)
+        self.pointer_object.redraw()
     
     def toggle_auto_save(self, state):
         # Xử lý sự kiện khi trạng thái của QCheckBox thay đổi
@@ -1167,7 +1882,16 @@ class VideoApp(VideoAppViewer):
             # Xoá dữ liệu trong records
             if self.records:
                 self.remove_all_records_from_preview()
+                self.remove_all_tracking_records_from_preview()
                 self.records = []
+                self.is_force_update = True
+            if self.tracking_records:
+                self.remove_all_records_from_preview()
+                self.remove_all_tracking_records_from_preview()
+                self.tracking_records = []
+                self.is_force_update = True
+            if self.pointer_tracking_records:
+                self.pointer_tracking_records = []
                 self.is_force_update = True
                 
             # Đặt lại các thông số liên quan đến video
@@ -1178,17 +1902,31 @@ class VideoApp(VideoAppViewer):
             self.is_playing_video = False
             self.is_force_update = False
             self._update_video_info()
+            self.update_presence_bar()
+            self.update_mot_presence_bar()
+            self.update_pointer_object()
             # if self.auto_save_enabled:
             #     self.disable_auto_save()
-            #self._update_frame()
+            self.remove_all_tracking_records_from_preview()
+            self._update_frame()
+            self._update_tracking_frame()
 
         
     def remove_all_records_from_preview(self):
         """Xoá hết các hàng trong bảng xem trước"""
         while self.table_preview_records.rowCount() > 0:
             self.table_preview_records.removeRow(0)
-            
+        self.update_presence_bar()    
         self._update_frame()
+        
+        
+    def remove_all_tracking_records_from_preview(self):
+        """Xoá hết các hàng trong bảng xem trước"""
+        while self.table_preview_tracking_records.rowCount() > 0:
+            self.table_preview_tracking_records.removeRow(0)
+        self.update_mot_presence_bar()    
+        self._update_tracking_frame()
+        
     def keyPressEvent(self, event):
         """global keyboard event"""
         try:
@@ -1208,19 +1946,634 @@ class VideoApp(VideoAppViewer):
                 self.remove_last_box()
             elif event.key() in [Qt.Key_T, Qt.Key_Delete]:
                 self.remove_target_record()   
-            elif event.button() == Qt.RightButton:
-                pass
             elif event.key() == Qt.Esc:
                 self.close()
+            elif event.button() == Qt.RightButton:
+                pass
+            
                 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred")
-            #print(e)
-        # else:
             
-        #     super().keyPressEvent(event)
-        #     event.ignore()
-            # self.logger.debug('clicked %s but no related binding event', str(event.key()))
+class QPredictionBar(QLabel):
+    clicked = pyqtSignal(QPoint)
+    dragged = pyqtSignal(QPoint)
+    lengthChanged = pyqtSignal(int)
+    predictionsChanged = pyqtSignal()
+    predictionsAdded = pyqtSignal(object)
+    annotationsAdded = pyqtSignal(object)
+    annotationsChanged = pyqtSignal()
+    predictionsRemoved = pyqtSignal(object)
+    annotationsRemoved = pyqtSignal(object)
+    idsChanged = pyqtSignal(object)
+    thresholdChanged = pyqtSignal(float)
+    cmap = {  # i: np.array(v, dtype=np.uint8) for i, v in enumerate([
+        None: [180, 180, 180], #[62, 80, 128]
+        0: [180, 180, 180],
+        1: [200, 200, 0], #ve moi
+        2: [0, 255, 0], #add tu file
+        3: [255, 0, 0],
+        4: [200, 0, 200],
+    }
+
+    def __init__(self, parent=None):
+        QLabel.__init__(self, parent)
+        self.threshold = 0
+        self.setMouseTracking(True)
+        self.setMinimumSize(1, 1)
+        self.length = 1
+        self.annotations = SortedDict()
+        self.predictions = SortedDict()
+        self.pixels = {0: SortedSet(), 1: SortedSet(), 2: SortedSet()}
+        self.cvImage = np.zeros((1, 1, 3), dtype=np.uint8)
+        self.ids = SortedSet()
+        self.filtered_ids = SortedSet()
+        self.idsChanged.connect(self.filterIds)
+        self.thresholdChanged.connect(self.filterIds)
+        self.lengthChanged.connect(self.resetIds)
+        self.annotationsAdded.connect(self.addIdsFromDict)
+        self.predictionsAdded.connect(self.addIdsFromDict)
+        self.predictionsAdded.connect(self.predictionsChanged)
+        self.predictionsRemoved.connect(self.predictionsChanged)
+        self.annotationsAdded.connect(self.annotationsChanged)
+        self.annotationsRemoved.connect(self.annotationsChanged)
+        self.show()
+
+    def filterIds(self):
+        self.filtered_ids = SortedSet(filter(lambda id: id == 0 or
+                                                        id == self.length - 1 or
+                                                        (id in self.predictions and self.predictions[id][0][-1] >= self.threshold) or
+                                                        (id in self.annotations),
+                                             self.ids))
+
+    def setThreshold(self, threshold):
+        self.threshold = threshold
+        self.thresholdChanged.emit(self.threshold)
+
+    def resetIds(self):
+        self.ids.clear()
+        self.ids.add(0)
+        if self.length > 0:
+            self.ids.add(self.length - 1)
+        self.idsChanged.emit(self.ids)
+
+    def addIdsFromDict(self, additions=None):
+        if additions is not None:
+            for _ in additions.keys():
+                self.ids.add(_)
+        self.idsChanged.emit(self.ids)
+
+    def addId(self, id):
+        if id not in self.ids:
+            self.ids.add(id)
+            self.idsChanged.emit(self.ids)
+
+    def removeId(self, id):
+        if id not in set(self.annotations.keys()).union(self.predictions.keys()):
+            self.ids.remove(id)
+            self.idsChanged.emit(self.ids)
+
+    def setLength(self, length):
+        self.length = length
+        self.clear()
+        self.lengthChanged.emit(self.length)
+
+    def setPredictions(self, predictions):
+        self.clearPredictions(False)
+        self.predictions.update(predictions)
+        self.predictionsAdded.emit(predictions)
+        self.redraw()
+
+    def addPredictions(self, predictions):
+        self.predictions.update(predictions)
+        self.predictionsAdded.emit(predictions)
+        self.redraw()
+
+    def removePrediction(self, id):
+        if id in self.predictions:
+            for _ in [2]:
+                self.pixels[_].pop(id)
+            self.predictionsRemoved.emit({id: self.predictions.pop(id)})
+            self.redraw()
+
+    def setAnnotations(self, annotations):
+        self.clearAnnotations(False)
+        self.annotations.update(annotations)
+        self.annotationsAdded.emit(annotations)
+        self.redraw()
+
+    def addAnnotations(self, annotations):
+        self.annotations.update(annotations)
+        self.annotationsAdded.emit(annotations)
+        self.redraw()
+
+    def removeAnnotation(self, id):
+        if id in self.annotations:
+            for _ in [0, 1]:
+                self.pixels[_].clear()
+            self.annotationsRemoved.emit({id: self.annotations.pop(id)})
+            self.redraw()
+
+    def redraw(self):
+        scale = (self.width() - 1) / (self.length - 1) if self.length > 1 else 0
+        for _ in self.pixels.keys():
+            self.pixels[_].clear()
+        self.pixels[0].update(map(lambda ann: round(ann[0] * scale), filter(lambda ann: len(ann[1]) == 0, self.annotations.items())))
+        self.pixels[1].update(map(lambda ann: round(ann[0] * scale), filter(lambda ann: len(ann[1]) > 0, self.annotations.items())))
+        self.pixels[2].update(map(lambda pred: round(pred[0] * scale),
+                                  filter(lambda pred: any(obj[-1] >= self.threshold for obj in pred[1]),
+                                         self.predictions.items())))
+        self.show()
+        #print('draw')
+
+    def show(self):
+        if self.cvImage.shape[1] != self.width():
+            self.cvImage = np.zeros((1, self.width(), 3), dtype=np.uint8)
+        self.cvImage[:, :] = self.cmap[None]
+        for _ in [0, 1]:
+            if len(self.pixels[_]) > 0:
+                self.cvImage[:, list(self.pixels[_])] = self.cmap[_]
+        if len(self.pixels[2]) > 0:
+            pred = set(self.pixels[2])
+            fn = tuple(pred.difference(list(self.pixels[0]) + list(self.pixels[1])))
+            fp = tuple(pred.intersection(self.pixels[0]))
+            tp = tuple(pred.intersection(self.pixels[1]))
+            self.cvImage[:, fn] = self.cmap[2]
+            self.cvImage[:, tp] = self.cmap[3]
+            self.cvImage[:, fp] = self.cmap[4]
+        # pixmap = QPixmap.fromImage(QImage(self.cvImage.data, self.cvImage.shape[1], self.cvImage.shape[0], QImage.Format_RGB888))
+        # self.setPixmap(pixmap.scaled(self.size()))
+        # Make presence bar thicker and red
+        for pixel in self.pixels[1]:
+            self.cvImage[:, pixel-1:pixel+2] = [0, 0, 255]  # Red color for presence bar
+        pixmap = QPixmap.fromImage(QImage(self.cvImage.data, self.cvImage.shape[1], self.cvImage.shape[0], QImage.Format_RGB888))
+        self.setPixmap(pixmap.scaled(self.size()))
+
+    def clearPredictions(self, redraw=True):
+        self.predictions.clear()
+        for _ in [0, 1]:
+            self.pixels[_].clear()
+        if redraw:
+            self.redraw()
+
+    def clearAnnotations(self, redraw=True):
+        self.annotations.clear()
+        for _ in [2]:
+            self.pixels[_].clear()
+        if redraw:
+            self.redraw()
+
+    def clear(self, redraw=True):
+        self.clearPredictions(False)
+        self.clearAnnotations(False)
+        self.resetIds()
+        if redraw:
+            self.redraw()
+
+    def resizeEvent(self, ev):
+        self.cvImage = np.zeros((1, self.width(), 3), dtype=np.uint8)
+        for _ in self.pixels.keys():
+            self.pixels[_].clear()
+        self.redraw()
+
+    def mousePressevent(self, ev):
+        if ev.button() == Qt.LeftButton:
+            self.clicked.emit(ev.pos())
+    
+    # def mousePressEvent(self, ev):
+    #     if ev.button() == Qt.LeftButton:
+    #         pos = ev.pos()
+    #         adjusted_x = pos.x()
+    #         self.clicked.emit(pos)
+    #         target_frame = self._pixelPosToFrame(adjusted_x)
+    #         #print(f"Clicked position: {self._pixelPosToFrame(adjusted_x)}")
+    #         print(target_frame)
+    #         #return target_frame
+            
+    def _pixelPosToFrame(self, pos):
+            if self.length <= 1:
+                return 0
+            scale = (self.length - 1) / (self.width() - 1)
+            return round(pos * scale)
+        
+    def mouseMoveEvent(self, ev):
+        if ev.buttons() == Qt.LeftButton:
+            self.dragged.emit(ev.pos())
+
+    def setRange(self, start, end):
+        if start >= 0 and end >= start:
+            self.length = end - start + 1
+            self.lengthChanged.emit(self.length)
+            self.resetIds()
+            self.redraw()
+    
+class QPredictionBar_MOT(QLabel):
+    clicked = pyqtSignal(QPoint)
+    dragged = pyqtSignal(QPoint)
+    lengthChanged = pyqtSignal(int)
+    predictionsChanged = pyqtSignal()
+    predictionsAdded = pyqtSignal(object)
+    annotationsAdded = pyqtSignal(object)
+    annotationsChanged = pyqtSignal()
+    predictionsRemoved = pyqtSignal(object)
+    annotationsRemoved = pyqtSignal(object)
+    idsChanged = pyqtSignal(object)
+    thresholdChanged = pyqtSignal(float)
+    cmap = {  # i: np.array(v, dtype=np.uint8) for i, v in enumerate([
+        None: [180, 180, 180], #[62, 80, 128]
+        0: [180, 180, 180],
+        1: [200, 200, 0], #ve moi
+        2: [0, 255, 0], #add tu file
+        3: [255, 0, 0],
+        4: [200, 0, 200],
+    }
+
+    def __init__(self, parent=None):
+        QLabel.__init__(self, parent)
+        self.threshold = 0
+        self.setMouseTracking(True)
+        self.setMinimumSize(1, 1)
+        self.length = 1
+        self.annotations = SortedDict()
+        self.predictions = SortedDict()
+        self.pixels = {0: SortedSet(), 1: SortedSet(), 2: SortedSet()}
+        self.cvImage = np.zeros((1, 1, 3), dtype=np.uint8)
+        self.ids = SortedSet()
+        self.filtered_ids = SortedSet()
+        self.idsChanged.connect(self.filterIds)
+        self.thresholdChanged.connect(self.filterIds)
+        self.lengthChanged.connect(self.resetIds)
+        self.annotationsAdded.connect(self.addIdsFromDict)
+        self.predictionsAdded.connect(self.addIdsFromDict)
+        self.predictionsAdded.connect(self.predictionsChanged)
+        self.predictionsRemoved.connect(self.predictionsChanged)
+        self.annotationsAdded.connect(self.annotationsChanged)
+        self.annotationsRemoved.connect(self.annotationsChanged)
+        self.show()
+
+    def filterIds(self):
+        self.filtered_ids = SortedSet(filter(lambda id: id == 0 or
+                                                        id == self.length - 1 or
+                                                        (id in self.predictions and self.predictions[id][0][-1] >= self.threshold) or
+                                                        (id in self.annotations),
+                                             self.ids))
+
+    def setThreshold(self, threshold):
+        self.threshold = threshold
+        self.thresholdChanged.emit(self.threshold)
+
+    def resetIds(self):
+        self.ids.clear()
+        self.ids.add(0)
+        if self.length > 0:
+            self.ids.add(self.length - 1)
+        self.idsChanged.emit(self.ids)
+
+    def addIdsFromDict(self, additions=None):
+        if additions is not None:
+            for _ in additions.keys():
+                self.ids.add(_)
+        self.idsChanged.emit(self.ids)
+
+    def addId(self, id):
+        if id not in self.ids:
+            self.ids.add(id)
+            self.idsChanged.emit(self.ids)
+
+    def removeId(self, id):
+        if id not in set(self.annotations.keys()).union(self.predictions.keys()):
+            self.ids.remove(id)
+            self.idsChanged.emit(self.ids)
+
+    def setLength(self, length):
+        self.length = length
+        self.clear()
+        self.lengthChanged.emit(self.length)
+
+    def setPredictions(self, predictions):
+        self.clearPredictions(False)
+        self.predictions.update(predictions)
+        self.predictionsAdded.emit(predictions)
+        self.redraw()
+
+    def addPredictions(self, predictions):
+        self.predictions.update(predictions)
+        self.predictionsAdded.emit(predictions)
+        self.redraw()
+
+    def removePrediction(self, id):
+        if id in self.predictions:
+            for _ in [2]:
+                self.pixels[_].pop(id)
+            self.predictionsRemoved.emit({id: self.predictions.pop(id)})
+            self.redraw()
+
+    def setAnnotations(self, annotations):
+        self.clearAnnotations(False)
+        self.annotations.update(annotations)
+        self.annotationsAdded.emit(annotations)
+        self.redraw()
+
+    def addAnnotations(self, annotations):
+        self.annotations.update(annotations)
+        self.annotationsAdded.emit(annotations)
+        self.redraw()
+
+    def removeAnnotation(self, id):
+        if id in self.annotations:
+            for _ in [0, 1]:
+                self.pixels[_].clear()
+            self.annotationsRemoved.emit({id: self.annotations.pop(id)})
+            self.redraw()
+
+    def redraw(self):
+        scale = (self.width() - 1) / (self.length - 1) if self.length > 1 else 0
+        for _ in self.pixels.keys():
+            self.pixels[_].clear()
+        self.pixels[0].update(map(lambda ann: round(ann[0] * scale), filter(lambda ann: len(ann[1]) == 0, self.annotations.items())))
+        self.pixels[1].update(map(lambda ann: round(ann[0] * scale), filter(lambda ann: len(ann[1]) > 0, self.annotations.items())))
+        self.pixels[2].update(map(lambda pred: round(pred[0] * scale),
+                                  filter(lambda pred: any(obj[-1] >= self.threshold for obj in pred[1]),
+                                         self.predictions.items())))
+        self.show()
+        #print('draw')
+
+    def show(self):
+        if self.cvImage.shape[1] != self.width():
+            self.cvImage = np.zeros((1, self.width(), 3), dtype=np.uint8)
+        self.cvImage[:, :] = self.cmap[None]
+        for _ in [0, 1]:
+            if len(self.pixels[_]) > 0:
+                self.cvImage[:, list(self.pixels[_])] = self.cmap[_]
+        if len(self.pixels[2]) > 0:
+            pred = set(self.pixels[2])
+            fn = tuple(pred.difference(list(self.pixels[0]) + list(self.pixels[1])))
+            fp = tuple(pred.intersection(self.pixels[0]))
+            tp = tuple(pred.intersection(self.pixels[1]))
+            self.cvImage[:, fn] = self.cmap[2]
+            self.cvImage[:, tp] = self.cmap[3]
+            self.cvImage[:, fp] = self.cmap[4]
+        # pixmap = QPixmap.fromImage(QImage(self.cvImage.data, self.cvImage.shape[1], self.cvImage.shape[0], QImage.Format_RGB888))
+        # self.setPixmap(pixmap.scaled(self.size()))
+        # Make presence bar thicker and yellow
+        for pixel in self.pixels[1]:
+            self.cvImage[:, pixel-1:pixel+2] = [255, 208, 23]  # Golden yellow color for mot presence bar
+        pixmap = QPixmap.fromImage(QImage(self.cvImage.data, self.cvImage.shape[1], self.cvImage.shape[0], QImage.Format_RGB888))
+        self.setPixmap(pixmap.scaled(self.size()))
+
+    def clearPredictions(self, redraw=True):
+        self.predictions.clear()
+        for _ in [0, 1]:
+            self.pixels[_].clear()
+        if redraw:
+            self.redraw()
+
+    def clearAnnotations(self, redraw=True):
+        self.annotations.clear()
+        for _ in [2]:
+            self.pixels[_].clear()
+        if redraw:
+            self.redraw()
+
+    def clear(self, redraw=True):
+        self.clearPredictions(False)
+        self.clearAnnotations(False)
+        self.resetIds()
+        if redraw:
+            self.redraw()
+
+    def resizeEvent(self, ev):
+        self.cvImage = np.zeros((1, self.width(), 3), dtype=np.uint8)
+        for _ in self.pixels.keys():
+            self.pixels[_].clear()
+        self.redraw()
+
+    def mousePressevent(self, ev):
+        if ev.button() == Qt.LeftButton:
+            self.clicked.emit(ev.pos())
+    
+    def _pixelPosToFrame(self, pos):
+            if self.length <= 1:
+                return 0
+            scale = (self.length - 1) / (self.width() - 1)
+            return round(pos * scale)
+
+    def mouseMoveEvent(self, ev):
+        if ev.buttons() == Qt.LeftButton:
+            self.dragged.emit(ev.pos())
+
+    def setRange(self, start, end):
+        if start >= 0 and end >= start:
+            self.length = end - start + 1
+            self.lengthChanged.emit(self.length)
+            self.resetIds()
+            self.redraw()
+
+class QBar_PointerObject(QLabel):
+    clicked = pyqtSignal(QPoint)
+    dragged = pyqtSignal(QPoint)
+    lengthChanged = pyqtSignal(int)
+    predictionsChanged = pyqtSignal()
+    predictionsAdded = pyqtSignal(object)
+    annotationsAdded = pyqtSignal(object)
+    annotationsChanged = pyqtSignal()
+    predictionsRemoved = pyqtSignal(object)
+    annotationsRemoved = pyqtSignal(object)
+    idsChanged = pyqtSignal(object)
+    thresholdChanged = pyqtSignal(float)
+    cmap = {  # i: np.array(v, dtype=np.uint8) for i, v in enumerate([
+        None: [240, 240, 240], #[62, 80, 128]
+        0: [180, 180, 180],
+        1: [200, 200, 0], #ve moi
+        2: [0, 255, 0], #add tu file
+        3: [255, 0, 0],
+        4: [200, 0, 200],
+    }
+
+    def __init__(self, parent=None):
+        QLabel.__init__(self, parent)
+        self.threshold = 0
+        self.setMouseTracking(True)
+        self.setMinimumSize(1, 1)
+        self.length = 1
+        self.annotations = SortedDict()
+        self.predictions = SortedDict()
+        self.pixels = {0: SortedSet(), 1: SortedSet(), 2: SortedSet()}
+        self.cvImage = np.zeros((1, 1, 3), dtype=np.uint8)
+        self.ids = SortedSet()
+        self.filtered_ids = SortedSet()
+        self.idsChanged.connect(self.filterIds)
+        self.thresholdChanged.connect(self.filterIds)
+        self.lengthChanged.connect(self.resetIds)
+        self.annotationsAdded.connect(self.addIdsFromDict)
+        self.predictionsAdded.connect(self.addIdsFromDict)
+        self.predictionsAdded.connect(self.predictionsChanged)
+        self.predictionsRemoved.connect(self.predictionsChanged)
+        self.annotationsAdded.connect(self.annotationsChanged)
+        self.annotationsRemoved.connect(self.annotationsChanged)
+        self.show()
+
+    def filterIds(self):
+        self.filtered_ids = SortedSet(filter(lambda id: id == 0 or
+                                                        id == self.length - 1 or
+                                                        (id in self.predictions and self.predictions[id][0][-1] >= self.threshold) or
+                                                        (id in self.annotations),
+                                             self.ids))
+
+    def setThreshold(self, threshold):
+        self.threshold = threshold
+        self.thresholdChanged.emit(self.threshold)
+
+    def resetIds(self):
+        self.ids.clear()
+        self.ids.add(0)
+        if self.length > 0:
+            self.ids.add(self.length - 1)
+        self.idsChanged.emit(self.ids)
+
+    def addIdsFromDict(self, additions=None):
+        if additions is not None:
+            for _ in additions.keys():
+                self.ids.add(_)
+        self.idsChanged.emit(self.ids)
+
+    def addId(self, id):
+        if id not in self.ids:
+            self.ids.add(id)
+            self.idsChanged.emit(self.ids)
+
+    def removeId(self, id):
+        if id not in set(self.annotations.keys()).union(self.predictions.keys()):
+            self.ids.remove(id)
+            self.idsChanged.emit(self.ids)
+
+    def setLength(self, length):
+        self.length = length
+        self.clear()
+        self.lengthChanged.emit(self.length)
+
+    def setPredictions(self, predictions):
+        self.clearPredictions(False)
+        self.predictions.update(predictions)
+        self.predictionsAdded.emit(predictions)
+        self.redraw()
+
+    def addPredictions(self, predictions):
+        self.predictions.update(predictions)
+        self.predictionsAdded.emit(predictions)
+        self.redraw()
+
+    def removePrediction(self, id):
+        if id in self.predictions:
+            for _ in [2]:
+                self.pixels[_].pop(id)
+            self.predictionsRemoved.emit({id: self.predictions.pop(id)})
+            self.redraw()
+
+    def setAnnotations(self, annotations):
+        self.clearAnnotations(False)
+        self.annotations.update(annotations)
+        self.annotationsAdded.emit(annotations)
+        self.redraw()
+
+    def addAnnotations(self, annotations):
+        self.annotations.update(annotations)
+        self.annotationsAdded.emit(annotations)
+        self.redraw()
+
+    def removeAnnotation(self, id):
+        if id in self.annotations:
+            for _ in [0, 1]:
+                self.pixels[_].clear()
+            self.annotationsRemoved.emit({id: self.annotations.pop(id)})
+            self.redraw()
+
+    def redraw(self):
+        scale = (self.width() - 1) / (self.length - 1) if self.length > 1 else 0
+        for _ in self.pixels.keys():
+            self.pixels[_].clear()
+        self.pixels[0].update(map(lambda ann: round(ann[0] * scale), filter(lambda ann: len(ann[1]) == 0, self.annotations.items())))
+        self.pixels[1].update(map(lambda ann: round(ann[0] * scale), filter(lambda ann: len(ann[1]) > 0, self.annotations.items())))
+        self.pixels[2].update(map(lambda pred: round(pred[0] * scale),
+                                  filter(lambda pred: any(obj[-1] >= self.threshold for obj in pred[1]),
+                                         self.predictions.items())))
+        self.show()
+        #print('draw')
+
+    def show(self):
+        if self.cvImage.shape[1] != self.width():
+            self.cvImage = np.zeros((1, self.width(), 3), dtype=np.uint8)
+        self.cvImage[:, :] = self.cmap[None]
+        for _ in [0, 1]:
+            if len(self.pixels[_]) > 0:
+                self.cvImage[:, list(self.pixels[_])] = self.cmap[_]
+        if len(self.pixels[2]) > 0:
+            pred = set(self.pixels[2])
+            fn = tuple(pred.difference(list(self.pixels[0]) + list(self.pixels[1])))
+            fp = tuple(pred.intersection(self.pixels[0]))
+            tp = tuple(pred.intersection(self.pixels[1]))
+            self.cvImage[:, fn] = self.cmap[2]
+            self.cvImage[:, tp] = self.cmap[3]
+            self.cvImage[:, fp] = self.cmap[4]
+        # pixmap = QPixmap.fromImage(QImage(self.cvImage.data, self.cvImage.shape[1], self.cvImage.shape[0], QImage.Format_RGB888))
+        # self.setPixmap(pixmap.scaled(self.size()))
+        # Make presence bar thicker and yellow
+        for pixel in self.pixels[1]:
+            self.cvImage[:, pixel-1:pixel+2] = [255, 0, 0]  # Red color for mot presence bar
+        pixmap = QPixmap.fromImage(QImage(self.cvImage.data, self.cvImage.shape[1], self.cvImage.shape[0], QImage.Format_RGB888))
+        self.setPixmap(pixmap.scaled(self.size()))
+
+    def clearPredictions(self, redraw=True):
+        self.predictions.clear()
+        for _ in [0, 1]:
+            self.pixels[_].clear()
+        if redraw:
+            self.redraw()
+
+    def clearAnnotations(self, redraw=True):
+        self.annotations.clear()
+        for _ in [2]:
+            self.pixels[_].clear()
+        if redraw:
+            self.redraw()
+
+    def clear(self, redraw=True):
+        self.clearPredictions(False)
+        self.clearAnnotations(False)
+        self.resetIds()
+        if redraw:
+            self.redraw()
+
+    def resizeEvent(self, ev):
+        self.cvImage = np.zeros((1, self.width(), 3), dtype=np.uint8)
+        for _ in self.pixels.keys():
+            self.pixels[_].clear()
+        self.redraw()
+
+    def mousePressevent(self, ev):
+        if ev.button() == Qt.LeftButton:
+            self.clicked.emit(ev.pos())
+    
+    def _pixelPosToFrame(self, pos):
+            if self.length <= 1:
+                return 0
+            scale = (self.length - 1) / (self.width() - 1)
+            return round(pos * scale)
+
+    def mouseMoveEvent(self, ev):
+        if ev.buttons() == Qt.LeftButton:
+            self.dragged.emit(ev.pos())
+
+    def setRange(self, start, end):
+        if start >= 0 and end >= start:
+            self.length = end - start + 1
+            self.lengthChanged.emit(self.length)
+            self.resetIds()
+            self.redraw()
+
+            
+            
+
 
 CONFIG_FILE = str(Path(__file__).resolve().parents[0] / 'config.yaml')
     
