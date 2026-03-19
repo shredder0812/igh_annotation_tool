@@ -24,6 +24,32 @@ python  main.py
 - Download .exe files from Google Drive: 
 <a href="https://drive.google.com/drive/folders/1w7Hv20d_KkRX8ELBXcDjtHqB5vwzFnFq?usp=sharing" target="_blank">Annotation Tool (Executable files)</a>
 
+## Build EXE (Windows)
+
+If you want to build your own executable file for machines without Python:
+
+1. Install dependencies and PyInstaller:
+
+```bash
+pip install -r requirements.txt
+pip install pyinstaller
+```
+
+2. Build one-file executable:
+
+```bash
+pyinstaller --noconfirm --onefile --windowed --name IGH_Annotation_Tool --add-data "config.yaml;." --add-data "img;img" main.py
+```
+
+3. Output executable:
+
+- `dist/IGH_Annotation_Tool.exe`
+
+4. Notes:
+
+- Put videos in folders where the app has write permission.
+- The tool writes output CSV files into the `outputs` folder near where the executable is launched.
+
 ## Tool Tutorials
 
 When running the main.py file, a window will appear prompting you to select an MP4 file (recommended video size is 1280x1024). After selecting the file, you will see the main interface as shown in the following image:
